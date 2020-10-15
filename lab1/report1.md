@@ -91,6 +91,363 @@ K>
 ```
 
 
-## Exercise 2
+### Exercise 2
 > Use GDB's si (Step Instruction) command to trace into the ROM BIOS for a few more instructions, and try to guess what it might be doing. You might want to look at Phil Storrs I/O Ports Description, as well as other materials on the 6.828 reference materials page. No need to figure out all the details - just the general idea of what the BIOS is doing first.
 
+
+
+The first instruction is 
+
+```asm
+ljmp $0xf000, $0xe05b 
+```
+and PC jump to `$0xe05b`. (Note that BIOS was run in real mode.)
+
+```asm
+0xfe05b: cmpl $0x0, $cs:0x6ac8
+0xfe062:  jne  0xfd2e1
+```
+If value at `$cs:0x6ac8` is not 0, jump to `$0xfd2e1`.
+
+```asm
+0xfe066:  xor  %dx, %dx
+0xfe068:  mov  %dx %ss
+0xfe06a:  mov  $0x7000, %esp
+0xfe070:  mov  $0xf34d2, %edx
+0xfe076:  jmp  0xfd15c
+0xfd15c:  mov  %eax, %ecx
+```
+Jump to `0xfd15c` and set initial value of some registers.
+
+```asm
+cli
+```
+External interrupts disabled at the end of the cli instruction or from that point on until the interrupt flag is set.
+
+```asm
+cld
+```
+Clears the direction flag: DF = 0.
+
+
+```asm
+0xfd161:  mov  $0x8f, %eax
+0xfd167:  out  %al, $0x70
+0xfd169:  in  $0x71, %al
+```
+**`in %al PortAddr`: Input byte from I/O port `PortAddr` into `%al`. **
+**`out PortAddr %al`: Output byte in `%al`to I/O port `PortAddr`. **
+
+The ports `0x70` and `0x71` are corresponding to CMOS. Set `$0x70` to $0x8f$, which disables NMI.
+
+```asm
+0xfd16b:  in  $0x92, %al
+0xfd16d:  or  $0x2, %al
+0xfd16f:  out  %al, $0x92
+```
+The ports `0x92` are corresponding to PS/2 system control port A. Set bit 1 = 1 indicates A20 active.
+
+
+## The Boot Loader
+
+### Exercise 3
+> Take a look at the lab tools guide, especially the section on GDB commands. Even if you're familiar with GDB, this includes some esoteric GDB commands that are useful for OS work.
+> Set a breakpoint at address 0x7c00, which is where the boot sector will be loaded. Continue execution until that breakpoint. Trace through the code in boot/boot.S, using the source code and the disassembly file obj/boot/boot.asm to keep track of where you are. Also use the x/i command in GDB to disassemble sequences of instructions in the boot loader, and compare the original boot loader source code with both the disassembly in obj/boot/boot.asm and GDB.
+
+
+
+At first, let's read `boot.S`.
+
+
+```asm
+seta20.1:
+  inb     $0x64,%al               # Wait for not busy
+  testb   $0x2,%al
+  jnz     seta20.1
+
+  movb    $0xd1,%al               # 0xd1 -> port 0x64
+  outb    %al,$0x64
+```
+The port `0x64` is corresponding to KB controller. bit 1 = 1 means input buffer full. So we wait until bit 1 = 0 and send `0xd1` to KB controller, which means next byte written to 0060 will be written to the 804x output port. The original IBM AT and many compatibles use bit 1 of the output port to control the A20 gate.
+
+```asm
+seta20.2:
+  inb     $0x64,%al               # Wait for not busy
+  testb   $0x2,%al
+  jnz     seta20.2
+
+  movb    $0xdf,%al               # 0xdf -> port 0x60
+  outb    %al,$0x60
+```
+The `0xdf` means to enable address line A20.
+
+
+```asm
+ lgdt    gdtdesc
+ ```
+ Load lgdt register.
+ 
+```asm
+movl    %cr0, %eax
+orl     $CR0_PE_ON, %eax
+movl    %eax, %cr0
+ljmp    $PROT_MODE_CSEG, $protcseg
+```
+Set bit 0 of CR0 register to 1, which means switching to protected mode.
+
+```asm
+  .code32                     # Assemble for 32-bit mode
+protcseg:
+  # Set up the protected-mode data segment registers
+  movw    $PROT_MODE_DSEG, %ax    # Our data segment selector
+  movw    %ax, %ds                # -> DS: Data Segment
+  movw    %ax, %es                # -> ES: Extra Segment
+  movw    %ax, %fs                # -> FS
+  movw    %ax, %gs                # -> GS
+  movw    %ax, %ss                # -> SS: Stack Segment
+  
+  # Set up the stack pointer and call into C.
+  movl    $start, %esp
+  call bootmain
+```
+
+Now we move to `main.c`.
+
+```c
+readseg((uint32_t) ELFHDR, SECTSIZE*8, 0);
+if (ELFHDR->e_magic != ELF_MAGIC)
+		goto bad;
+```
+Read ELF head.
+
+
+```C
+ph = (struct Proghdr *) ((uint8_t *) ELFHDR + ELFHDR->e_phoff);
+eph = ph + ELFHDR->e_phnum;
+```
+`ph`, `eph` are beginning, ending of program header table, respectively.
+
+
+```C
+for (; ph < eph; ph++)
+// p_pa is the load address of this segment (as well
+// as the physical address)
+  readseg(ph->p_pa, ph->p_memsz, ph->p_offset);
+```
+Load the kernel.
+
+```C
+((void (*)(void)) (ELFHDR->e_entry))();
+```
+Run the kernel.
+
+
+> Trace into bootmain() in boot/main.c, and then into readsect(). Identify the exact assembly instructions that correspond to each of the statements in readsect(). Trace through the rest of readsect() and back out into bootmain(), and identify the begin and end of the for loop that reads the remaining sectors of the kernel from the disk. Find out what code will run when the loop is finished, set a breakpoint there, and continue to that breakpoint. Then step through the remainder of the boot loader.
+
+```asm
+00007cdc <readseg>:
+{
+    7cdc:	55                   	push   %ebp
+    7cdd:	89 e5                	mov    %esp,%ebp
+    7cdf:	57                   	push   %edi
+    7ce0:	56                   	push   %esi
+	offset = (offset / SECTSIZE) + 1;
+    7ce1:	8b 7d 10             	mov    0x10(%ebp),%edi
+{
+    7ce4:	53                   	push   %ebx
+	end_pa = pa + count;
+    7ce5:	8b 75 0c             	mov    0xc(%ebp),%esi
+{
+    7ce8:	8b 5d 08             	mov    0x8(%ebp),%ebx
+	offset = (offset / SECTSIZE) + 1;
+    7ceb:	c1 ef 09             	shr    $0x9,%edi
+	end_pa = pa + count;
+    7cee:	01 de                	add    %ebx,%esi
+	offset = (offset / SECTSIZE) + 1;
+    7cf0:	47                   	inc    %edi
+	pa &= ~(SECTSIZE - 1);
+    7cf1:	81 e3 00 fe ff ff    	and    $0xfffffe00,%ebx
+	while (pa < end_pa) {
+    7cf7:	39 f3                	cmp    %esi,%ebx
+    7cf9:	73 12                	jae    7d0d <readseg+0x31>
+		readsect((uint8_t*) pa, offset);
+    7cfb:	57                   	push   %edi
+    7cfc:	53                   	push   %ebx
+		offset++;
+    7cfd:	47                   	inc    %edi
+		pa += SECTSIZE;
+    7cfe:	81 c3 00 02 00 00    	add    $0x200,%ebx
+		readsect((uint8_t*) pa, offset);
+    7d04:	e8 73 ff ff ff       	call   7c7c <readsect>
+		offset++;
+    7d09:	58                   	pop    %eax
+    7d0a:	5a                   	pop    %edx
+    7d0b:	eb ea                	jmp    7cf7 <readseg+0x1b>
+}
+    7d0d:	8d 65 f4             	lea    -0xc(%ebp),%esp
+    7d10:	5b                   	pop    %ebx
+    7d11:	5e                   	pop    %esi
+    7d12:	5f                   	pop    %edi
+    7d13:	5d                   	pop    %ebp
+    7d14:	c3                   	ret    
+```
+
+> At what point does the processor start executing 32-bit code? What exactly causes the switch from 16- to 32-bit mode?
+
+The instruction `ljmp $PROT_MODE_CSEG, $protcseg` causes the switch from 16- to 32-bit mode in the boot.S.
+
+> What is the last instruction of the boot loader executed, and what is the first instruction of the kernel it just loaded?
+
+The last instruction is 
+```asm
+0x7d6b:    call   *0x10018
+```
+which corresponding to
+```c
+((void (*)(void)) (ELFHDR->e_entry))();
+```
+in main.c.
+
+Set a breakpoint at pc 0x7d6b (the last instruction of the boot loader) and step:
+```asm
+=> 0x10000c:	movw   $0x1234,0x472
+0x0010000c in ?? ()
+```
+which is the  first instruction of the kernel.
+
+> Where is the first instruction of the kernel?
+As we have mentioned, the first instruction of the kernel is at `0x0010000c`.
+
+> How does the boot loader decide how many sectors it must read in order to fetch the entire kernel from disk? Where does it find this information?
+
+The boot loader read the **program header** to decide it, which in **the ELF head**.
+
+### Loading the Kernel
+
+Examine the full list of the names, sizes, and link addresses of all the sections in the kernel executable by typing:
+
+```shell
+> objdump -h obj/kern/kernel
+kernel:     file format elf32-i386
+
+Sections:
+Idx Name          Size      VMA       LMA       File off  Algn
+  0 .text         000019e9  f0100000  00100000  00001000  2**4
+                  CONTENTS, ALLOC, LOAD, READONLY, CODE
+  1 .rodata       000006c0  f0101a00  00101a00  00002a00  2**5
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+  2 .stab         00003b95  f01020c0  001020c0  000030c0  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+  3 .stabstr      00001948  f0105c55  00105c55  00006c55  2**0
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+  4 .data         00009300  f0108000  00108000  00009000  2**12
+                  CONTENTS, ALLOC, LOAD, DATA
+  5 .got          00000008  f0111300  00111300  00012300  2**2
+                  CONTENTS, ALLOC, LOAD, DATA
+  6 .got.plt      0000000c  f0111308  00111308  00012308  2**2
+                  CONTENTS, ALLOC, LOAD, DATA
+  7 .data.rel.local 00001000  f0112000  00112000  00013000  2**12
+                  CONTENTS, ALLOC, LOAD, DATA
+  8 .data.rel.ro.local 00000044  f0113000  00113000  00014000  2**2
+                  CONTENTS, ALLOC, LOAD, DATA
+  9 .bss          00000648  f0113060  00113060  00014060  2**5
+                  CONTENTS, ALLOC, LOAD, DATA
+ 10 .comment      00000029  00000000  00000000  000146a8  2**0
+                  CONTENTS, READONLY
+```
+
+The boot loader uses the ELF program headers to decide how to load the sections. The program headers specify which parts of the ELF object to load into memory and the destination address each should occupy. You can inspect the program headers by typing:
+```shell
+> objdump -x obj/kern/kernel
+Program Header:
+    LOAD off    0x00001000 vaddr 0xf0100000 paddr 0x00100000 align 2**12
+         filesz 0x0000759d memsz 0x0000759d flags r-x
+    LOAD off    0x00009000 vaddr 0xf0108000 paddr 0x00108000 align 2**12
+         filesz 0x0000b6a8 memsz 0x0000b6a8 flags rw-
+   STACK off    0x00000000 vaddr 0x00000000 paddr 0x00000000 align 2**4
+         filesz 0x00000000 memsz 0x00000000 flags rwx
+```
+
+### Exercise 5
+>  Trace through the first few instructions of the boot loader again and identify the first instruction that would "break" or otherwise do the wrong thing if you were to get the boot loader's link address wrong. Then change the link address in boot/Makefrag to something wrong, run make clean, recompile the lab with make, and trace into the boot loader again to see what happens. Don't forget to change the link address back and make clean again afterward!
+
+We know that BIOS load boot loader at `0x7C00`. 
+```shell
+> make clean 
+rm -rf obj .gdbinit jos.in qemu.log
+```
+Open `boot/Makefrag` and we can see
+```
+$(OBJDIR)/boot/boot: $(BOOT_OBJS)
+	@echo + ld boot/boot
+	$(V)$(LD) $(LDFLAGS) -N -e start -Ttext 0x7C00 -o $@.out $^
+	$(V)$(OBJDUMP) -S $@.out >$@.asm
+	$(V)$(OBJCOPY) -S -O binary -j .text $@.out $@
+	$(V)perl boot/sign.pl $(OBJDIR)/boot/boot
+```
+We change `0x7C00` to `0x7D00`.
+
+```shell
+> make
+> make qemu-gdb
+> make gdb
+```
+Make breakpoint at `0x7c00`. Trace through the first few instructions and we can see
+```asm
+ 0x7c1e:	lgdtw  0x7d64
+```
+which used to be
+```asm
+ 0x7c1e:	lgdtw  0x7c64
+```
+GDTR read wrong values. Type `continue` in gdb and we get
+```
+Program received signal SIGTRAP, Trace/breakpoint trap.
+[   0:7c2d] => 0x7c2d:	ljmp   $0x8,$0x7d32
+0x00007c2d in ?? ()
+```
+which used to be
+```asm
+ljmp   $0x8,$0x7c32
+```
+
+In Qemu, we get
+```
+Triple fault.  Halting for inspection via QEMU monitor.
+```
+
+
+Besides the section information, there is one more field in the ELF header that is important to us, named e_entry. This field holds the link address of the entry point in the program: the memory address in the program's text section at which the program should begin executing. You can see the entry point:
+
+```shell
+> objdump -f obj/kern/kernel
+obj/kern/kernel:     file format elf32-i386
+architecture: i386, flags 0x00000112:
+EXEC_P, HAS_SYMS, D_PAGED
+start address 0x0010000c
+
+```
+
+
+### Exercise 6
+> We can examine memory using GDB's x command. The GDB manual has full details, but for now, it is enough to know that the command x/Nx ADDR prints N words of memory at ADDR. (Note that both 'x's in the command are lowercase.) Warning: The size of a word is not a universal standard. In GNU assembly, a word is two bytes (the 'w' in xorw, which stands for word, means 2 bytes).
+
+> Reset the machine (exit QEMU/GDB and start them again). Examine the 8 words of memory at 0x00100000 at the point the BIOS enters the boot loader, and then again at the point the boot loader enters the kernel. Why are they different? What is there at the second breakpoint? (You do not really need to use QEMU to answer this question. Just think.)
+
+
+Examine the 8 words of memory at 0x00100000 at the point the BIOS enters the boot loader:
+```gdb
+(gdb) x/8x 0x100000
+0x100000:	0x00000000	0x00000000	0x00000000	0x00000000
+0x100010:	0x00000000	0x00000000	0x00000000	0x00000000
+```
+
+Examine the 8 words of memory at 0x00100000 at the point the boot loader enters the kernel:
+
+```gdb
+(gdb) x/8x 0x100000
+0x100000:	0x1badb002	0x00000000	0xe4524ffe	0x7205c766
+0x100010:	0x34000004	0x2000b812	0x220f0011	0xc0200fd8
+```
+
+They are different because boot loader load kernel at `$0x100000`. There is the `.text` section because the entry point is `$0x10000c`.

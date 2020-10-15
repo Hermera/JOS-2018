@@ -24,7 +24,7 @@ start:
   # Enable A20:
   #   For backwards compatibility with the earliest PCs, physical
   #   address line 20 is tied low, so that addresses higher than
-  #   1MB wrap around to zero by default.  This code undoes this.
+  #   1MB wrap around to zero by default.  This code undoes this. 
 seta20.1:
   inb     $0x64,%al               # Wait for not busy
   testb   $0x2,%al
