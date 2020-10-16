@@ -525,6 +525,7 @@ void vprintfmt(void (*putch)(int, void*), void *putdat, const char *fmt, va_list
 - `void (*putch)(int, void*)`: `int` and `void*` correspond to the value of output character and address.
 - `void *putdat`: equal to `void*` mentioned before.
 - `const char *fmt`: the format string.
+- `va_list ap`: the arguments.
 
 
 ```c
@@ -541,3 +542,122 @@ Directly output the string before `%`. Then parse the format.
 
 > We have omitted a small fragment of code - the code necessary to print octal numbers using patterns of the form "%o". Find and fill in this code fragment.
 
+
+```c
+case 'o':
+    // Replace this with your code.
+    /* putch('X', putdat); */
+    /* putch('X', putdat); */
+    /* putch('X', putdat); */
+    /* break; */
+    num = getuint(&ap, lflag);
+    base = 8;
+    goto number;
+```			
+
+> Explain the interface between printf.c and console.c. Specifically, what function does console.c export? How is this function used by printf.c?
+
+`console.c` exports `cputchar`, `getchar` and  `iscons`.
+`cputchar` is used as a parameter when `printf.c` calls `vprintfmt`.
+
+> Explain the following from `console.c`:
+```c
+if (crt_pos >= CRT_SIZE) {
+    int i;
+    memmove(crt_buf, crt_buf + CRT_COLS, (CRT_SIZE - CRT_COLS) * sizeof(uint16_t));
+    for (i = CRT_SIZE - CRT_COLS; i < CRT_SIZE; i++)
+            crt_buf[i] = 0x0700 | ' ';
+            crt_pos -= CRT_COLS;
+}
+```
+
+The function `cga_putc` define a buffer to cga displayer. When the screen is full ( `>= CRT_SIZE` ), scroll down one row to show newer infomation.
+
+> For the following questions you might wish to consult the notes for Lecture 2. These notes cover GCC's calling convention on the x86. Trace the execution of the following code step-by-step:
+```c
+int x = 1, y = 3, z = 4;
+cprintf("x %d, y %x, z %d\n", x, y, z);
+```
+
+We modify `kern/monitor.c`.
+```c
+void
+monitor(struct Trapframe *tf)
+{
+	char *buf;
+
+	cprintf("Welcome to the JOS kernel monitor!\n");
+	cprintf("Type 'help' for a list of commands.\n");
+
+	// insert
+	int x = 1, y = 3, z = 4;
+	cprintf("x %d, y %x, z %d\n", x, y, z);
+
+	while (1) {
+		buf = readline("K> ");
+		if (buf != NULL)
+			if (runcmd(buf, tf) < 0)
+				break;
+	}
+}
+```
+
+> In the call to `cprintf()`, to what does fmt point? To what does ap point?
+fmt points to `"x %d, y %x, z %d\n"`, and ap points to these arguments.
+
+> List (in order of execution) each call to cons_putc, va_arg, and vcprintf. For cons_putc, list its argument as well. For va_arg, list what ap points to before and after the call. For vcprintf list the values of its two arguments.
+
+Using gdb, make breakpoint at `cons_putc`, `vcprintf` and make watchpoint at `ap`, we have
+```
+cprintf (fmt=0xf0101ad2 "x %d, y %x, z %d\n") 
+vcprintf (fmt=0xf0101ad2 "x %d, y %x, z %d\n", ap=0xf0115f64 "\001")
+cons_putc (c=120)
+cons_putc (c=32)
+va_arg(*ap, int)
+Hardware watchpoint 4: ap
+Old value = 0xf0115f64 "\001"
+New value = 0xf0115f68 "\003"
+cons_putc (c=49)
+cons_putc (c=44)
+cons_putc (c=32)
+cons_putc (c=121)
+cons_putc (c=32)
+va_arg(*ap, int)
+Hardware watchpoint 4: ap
+Old value = 0xf0115f68 "\003"
+New value = 0xf0115f6c "\004"
+cons_putc (c=51)
+cons_putc (c=44)
+cons_putc (c=32)
+cons_putc (c=122)
+cons_putc (c=32)
+va_arg(*ap, int)
+Hardware watchpoint 4: ap
+Old value = 0xf0115f6c "\004"
+New value = 0xf0115f70 "T\034\020?\214_\021??\027\020??_\021??\027\020?_\021?_\021?" 
+cons_putc (c=52)
+cons_putc (c=10)
+```
+
+> Run the following code.
+```c
+unsigned int i = 0x00646c72;
+cprintf("H%x Wo%s", 57616, &i);
+```
+> What is the output? Explain how this output is arrived at in the step-by-step manner of the previous exercise.
+
+The output is "He110 World". 57616 = 0xe110, thus `"H%x"` transfer to `He110`. `i = 0x00646c72` is treated as a string, so it will be printed as 'r'=(char)0x72 'l'=(char)0x6c 'd'=(char)0x64, and 0x00 is treated as a mark of end of string.
+
+> The output depends on that fact that the x86 is little-endian. If the x86 were instead big-endian what would you set i to in order to yield the same output? Would you need to change 57616 to a different value?
+
+We need to set i to `0x726c6400`. Do not need to change 57616.
+
+> In the following code, what is going to be printed after 'y='? (note: the answer is not a specific value.) Why does this happen?
+```c
+cprintf("x=%d y=%d", 3);
+```
+We are not sure about the output after `"y="` since the content in memory after `3` can be arbitrary.
+
+> Let's say that GCC changed its calling convention so that it pushed arguments on the stack in declaration order, so that the last argument is pushed last. How would you have to change cprintf or its interface so that it would still be possible to pass it a variable number of arguments?
+
+Add another argument after the variable arguments to indicate the length of arguments.
