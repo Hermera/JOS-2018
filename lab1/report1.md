@@ -451,3 +451,52 @@ Examine the 8 words of memory at 0x00100000 at the point the boot loader enters 
 ```
 
 They are different because boot loader load kernel at `$0x100000`. There is the `.text` section because the entry point is `$0x10000c`.
+
+
+## The Kernel
+
+### Exercise 7
+>  Use QEMU and GDB to trace into the JOS kernel and stop at the movl %eax, %cr0. Examine memory at 0x00100000 and at 0xf0100000.
+
+```gdb
+(gdb) x/4b 0x00100000
+0x100000:	0x02	0xb0	0xad	0x1b
+(gdb) x/4b 0xf0100000
+0xf0100000 <_start+4026531828>:	0x00	0x00	0x00	0x00
+```
+
+> Now, single step over that instruction using the stepi GDB command. Again, examine memory at 0x00100000 and at 0xf0100000. Make sure you understand what just happened.
+
+```gdb
+(gdb) x/4b 0x00100000
+0x100000:	0x02	0xb0	0xad	0x1b
+(gdb) x/4b 0xf0100000
+0xf0100000 <_start+4026531828>:	0x02	0xb0	0xad	0x1b
+```
+Paging enabled. Two virtual addresses `0x00100000` and `0xf0100000` correspond to a same physical address.
+
+
+> What is the first instruction after the new mapping is established that would fail to work properly if the mapping weren't in place? Comment out the movl %eax, %cr0 in kern/entry.S, trace into it, and see if you were right.
+
+```gdb
+(gdb) 
+=> 0x10002a:	jmp    *%eax
+0x0010002a in ?? ()
+(gdb) 
+=> 0xf010002c <relocated>:	add    %al,(%eax)
+relocated () at kern/entry.S:74
+74		movl	$0x0,%ebp			# nuke frame pointer
+(gdb) 
+Remote connection closed
+```
+
+We get error message in qemu:
+```
+qemu: fatal: Trying to execute code outside RAM or ROM at 0xf010002c
+```
+
+
+### Exercise 8
+
+> We have omitted a small fragment of code - the code necessary to print octal numbers using patterns of the form "%o". Find and fill in this code fragment.
+
