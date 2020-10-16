@@ -91,7 +91,7 @@ K>
 ```
 
 
-### Exercise 2
+#### Exercise 2
 > Use GDB's si (Step Instruction) command to trace into the ROM BIOS for a few more instructions, and try to guess what it might be doing. You might want to look at Phil Storrs I/O Ports Description, as well as other materials on the 6.828 reference materials page. No need to figure out all the details - just the general idea of what the BIOS is doing first.
 
 
@@ -150,7 +150,7 @@ The ports `0x92` are corresponding to PS/2 system control port A. Set bit 1 = 1 
 
 ## The Boot Loader
 
-### Exercise 3
+#### Exercise 3
 > Take a look at the lab tools guide, especially the section on GDB commands. Even if you're familiar with GDB, this includes some esoteric GDB commands that are useful for OS work.
 > Set a breakpoint at address 0x7c00, which is where the boot sector will be loaded. Continue execution until that breakpoint. Trace through the code in boot/boot.S, using the source code and the disassembly file obj/boot/boot.asm to keep track of where you are. Also use the x/i command in GDB to disassemble sequences of instructions in the boot loader, and compare the original boot loader source code with both the disassembly in obj/boot/boot.asm and GDB.
 
@@ -368,7 +368,7 @@ Program Header:
          filesz 0x00000000 memsz 0x00000000 flags rwx
 ```
 
-### Exercise 5
+#### Exercise 5
 >  Trace through the first few instructions of the boot loader again and identify the first instruction that would "break" or otherwise do the wrong thing if you were to get the boot loader's link address wrong. Then change the link address in boot/Makefrag to something wrong, run make clean, recompile the lab with make, and trace into the boot loader again to see what happens. Don't forget to change the link address back and make clean again afterward!
 
 We know that BIOS load boot loader at `0x7C00`. 
@@ -429,7 +429,7 @@ start address 0x0010000c
 ```
 
 
-### Exercise 6
+#### Exercise 6
 > We can examine memory using GDB's x command. The GDB manual has full details, but for now, it is enough to know that the command x/Nx ADDR prints N words of memory at ADDR. (Note that both 'x's in the command are lowercase.) Warning: The size of a word is not a universal standard. In GNU assembly, a word is two bytes (the 'w' in xorw, which stands for word, means 2 bytes).
 
 > Reset the machine (exit QEMU/GDB and start them again). Examine the 8 words of memory at 0x00100000 at the point the BIOS enters the boot loader, and then again at the point the boot loader enters the kernel. Why are they different? What is there at the second breakpoint? (You do not really need to use QEMU to answer this question. Just think.)
@@ -455,7 +455,9 @@ They are different because boot loader load kernel at `$0x100000`. There is the 
 
 ## The Kernel
 
-### Exercise 7
+### Using virtual memory to work around position dependence
+
+#### Exercise 7
 >  Use QEMU and GDB to trace into the JOS kernel and stop at the movl %eax, %cr0. Examine memory at 0x00100000 and at 0xf0100000.
 
 ```gdb
@@ -496,7 +498,46 @@ qemu: fatal: Trying to execute code outside RAM or ROM at 0xf010002c
 ```
 
 
-### Exercise 8
+Now we turn to read through `kern/printf.c`, `lib/printfmt.c`, and `kern/console.c`. Read `kern/console.c` at first.
+
+```c
+// `High'-level console I/O.  Used by readline and cprintf.
+void
+cputchar(int c)
+{
+    cons_putc(c);
+}
+
+// output a character to the console
+static void
+cons_putc(int c)
+{
+    serial_putc(c);
+    lpt_putc(c);
+    cga_putc(c);
+```
+Then we turn to `printfmt.c` and pay attention to function `vprintfmt`.
+
+```c
+void vprintfmt(void (*putch)(int, void*), void *putdat, const char *fmt, va_list ap);
+```
+
+- `void (*putch)(int, void*)`: `int` and `void*` correspond to the value of output character and address.
+- `void *putdat`: equal to `void*` mentioned before.
+- `const char *fmt`: the format string.
+
+
+```c
+	while ((ch = *(unsigned char *) fmt++) != '%') {
+			if (ch == '\0')
+				return;
+			putch(ch, putdat);
+		}
+```
+Directly output the string before `%`. Then parse the format.
+
+
+#### Exercise 8
 
 > We have omitted a small fragment of code - the code necessary to print octal numbers using patterns of the form "%o". Find and fill in this code fragment.
 
