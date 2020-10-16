@@ -661,3 +661,54 @@ We are not sure about the output after `"y="` since the content in memory after 
 > Let's say that GCC changed its calling convention so that it pushed arguments on the stack in declaration order, so that the last argument is pushed last. How would you have to change cprintf or its interface so that it would still be possible to pass it a variable number of arguments?
 
 Add another argument after the variable arguments to indicate the length of arguments.
+
+### The Stack
+
+#### Exercise 9
+
+> Determine where the kernel initializes its stack. 
+
+`%esp`, `%ebp` are not changed until jump to `kern/entry.S`. Hence let's turn to `entry.S` and find
+```asm
+relocated:
+
+	# Clear the frame pointer register (EBP)
+	# so that once we get into debugging C code,
+	# stack backtraces will be terminated properly.
+	movl	$0x0,%ebp			# nuke frame pointer
+
+	# Set the stack pointer
+	movl	$(bootstacktop),%esp
+
+	# now to C code
+	call	i386_init
+```
+
+> Determine exactly where in memory its stack is located. 
+
+In `inc/memlayout.h`:
+```h
+#define KSTKSIZE	(8*PGSIZE)   		// size of a kernel stack
+```
+
+In `obj/kern/kernel.sym`:
+```sym
+f0110000 D bootstacktop
+```
+
+In `entry.S`:
+```asm
+	.p2align	PGSHIFT		# force page alignment
+	.globl		bootstack
+bootstack:
+	.space		KSTKSIZE
+	.globl		bootstacktop   
+bootstacktop:
+```
+
+Therefore, we concluded 
+
+
+
+
+How does the kernel reserve space for its stack? And at which "end" of this reserved area is the stack pointer initialized to point to?
