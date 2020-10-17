@@ -685,6 +685,10 @@ relocated:
 ```
 
 > Determine exactly where in memory its stack is located. 
+In `inc/mmu.h`:
+```h
+#define PGSIZE		4096
+```
 
 In `inc/memlayout.h`:
 ```h
@@ -705,10 +709,16 @@ bootstack:
 	.globl		bootstacktop   
 bootstacktop:
 ```
+Trace the kernel we have
+```gdb
+ 0xf0100034 <relocated+5>:	mov    $0xf0110000,%esp
+relocated () at kern/entry.S:77
+77		movl	$(bootstacktop),%esp
+```
 
-Therefore, we concluded 
+Therefore, we concluded the stack at virtual address `0xf0108000` - `0xf0110000`, physical address `0x00108000` - `0x00110000`.
 
+> How does the kernel reserve space for its stack? And at which "end" of this reserved area is the stack pointer initialized to point to?
 
+As we mentioned before, the kernel reserve space in `entry.S`. The stack pointer point to `bootstacktop`, i.e., `0xf0110000`.
 
-
-How does the kernel reserve space for its stack? And at which "end" of this reserved area is the stack pointer initialized to point to?

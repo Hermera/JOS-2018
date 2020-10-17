@@ -1288,7 +1288,6 @@ f0100a56:	e8 b7 ff ff ff       	call   f0100a12 <vcprintf>
 	va_end(ap);
 
 	return cnt;
-}
 f0100a5b:	c9                   	leave  
 f0100a5c:	c3                   	ret    
 
