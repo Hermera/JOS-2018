@@ -722,3 +722,92 @@ Therefore, we concluded the stack at virtual address `0xf0108000` - `0xf0110000`
 
 As we mentioned before, the kernel reserve space in `entry.S`. The stack pointer point to `bootstacktop`, i.e., `0xf0110000`.
 
+
+#### Exercise 10
+
+> To become familiar with the C calling conventions on the x86, find the address of the test_backtrace function in obj/kern/kernel.asm, set a breakpoint there, and examine what happens each time it gets called after the kernel starts. How many 32-bit words does each recursive nesting level of test_backtrace push on the stack, and what are those words?
+> Note that, for this exercise to work properly, you should be using the patched version of QEMU available on the tools page or on Athena. Otherwise, you'll have to manually translate all breakpoint and memory addresses to linear addresses.
+
+In `kern/init.c`
+```c
+void
+test_backtrace(int x)
+{
+	cprintf("entering test_backtrace %d\n", x);
+	if (x > 0)
+		test_backtrace(x-1);
+	else
+		mon_backtrace(0, 0, 0);
+	cprintf("leaving test_backtrace %d\n", x);
+}
+
+void
+i386_init(void)
+{
+        ...
+
+	// Test the stack backtrace function (lab 1 only)
+	test_backtrace(5);
+
+	...
+}
+```
+
+In `kern/monitor.c`:
+```c
+int
+mon_backtrace(int argc, char **argv, struct Trapframe *tf)
+{
+	// Your code here.
+	return 0;
+}
+```
+
+Now we analyze `test_backtrace` in `kernel.asm`:
+```asm
+void
+test_backtrace(int x)
+{
+f0100040:	55                   	push   %ebp 
+# saves the previous function's base pointer
+f0100041:	89 e5                	mov    %esp,%ebp
+# set new stack pointer
+f0100043:	56                   	push   %esi
+f0100044:	53                   	push   %ebx
+f0100045:	e8 72 01 00 00       	call   f01001bc <__x86.get_pc_thunk.bx>
+f010004a:	81 c3 be 12 01 00    	add    $0x112be,%ebx
+f0100050:	8b 75 08             	mov    0x8(%ebp),%esi
+	cprintf("entering test_backtrace %d\n", x);
+f0100053:	83 ec 08             	sub    $0x8,%esp
+f0100056:	56                   	push   %esi
+f0100057:	8d 83 18 07 ff ff    	lea    -0xf8e8(%ebx),%eax
+f010005d:	50                   	push   %eax
+f010005e:	e8 e6 09 00 00       	call   f0100a49 <cprintf>
+# call cprintf
+	if (x > 0)
+f0100063:	83 c4 10             	add    $0x10,%esp
+# update #esp
+f0100066:	85 f6                	test   %esi,%esi
+# test whether x > 0
+f0100068:	7f 2b                	jg     f0100095 <test_backtrace+0x55>
+# if so, call test_backtrace(x - 1)
+		test_backtrace(x-1);
+	else
+		mon_backtrace(0, 0, 0);
+f010006a:	83 ec 04             	sub    $0x4,%esp
+f010006d:	6a 00                	push   $0x0
+f010006f:	6a 00                	push   $0x0
+f0100071:	6a 00                	push   $0x0
+f0100073:	e8 0b 08 00 00       	call   f0100883 <mon_backtrace>
+# else, call mon_backtrace
+f0100078:	83 c4 10             	add    $0x10,%esp
+	cprintf("leaving test_backtrace %d\n", x);
+f010007b:	83 ec 08             	sub    $0x8,%esp
+f010007e:	56                   	push   %esi
+f010007f:	8d 83 34 07 ff ff    	lea    -0xf8cc(%ebx),%eax
+f0100085:	50                   	push   %eax
+f0100086:	e8 be 09 00 00       	call   f0100a49 <cprintf>
+}
+```
+
+
