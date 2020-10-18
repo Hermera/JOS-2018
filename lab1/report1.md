@@ -2,6 +2,16 @@
 
 Hongyu Wen, 1800013069
 
+## Grade
+```
+running JOS: (1.1s) 
+  printf: OK 
+  backtrace count: OK 
+  backtrace arguments: OK 
+  backtrace symbols: OK 
+  backtrace lines: OK 
+Score: 50/50
+```
 
 ## Environment Configuration
 
@@ -662,6 +672,12 @@ We are not sure about the output after `"y="` since the content in memory after 
 
 Add another argument after the variable arguments to indicate the length of arguments.
 
+
+<!-- #### Challenge -->
+<!-- > Enhance the console to allow text to be printed in different colors. The traditional way to do this is to make it interpret ANSI escape sequences embedded in the text strings printed to the console, but you may use any mechanism you like. There is plenty of information on the 6.828 reference page and elsewhere on the web on programming the VGA display hardware. If you're feeling really adventurous, you could try switching the VGA hardware into a graphics mode and making the console draw text onto the graphical frame buffer. -->
+
+
+
 ### The Stack
 
 #### Exercise 9
@@ -810,4 +826,121 @@ f0100086:	e8 be 09 00 00       	call   f0100a49 <cprintf>
 }
 ```
 
+#### Exercise 11
 
+```c
+int
+mon_backtrace(int argc, char **argv, struct Trapframe *tf)
+{
+	// Your code here.
+	 cprintf("Stack backtrace:\n");
+#define READ(x) *((uint32_t*) (x))
+
+	uint32_t ebp = read_ebp();
+	while (ebp) {
+		cprintf("ebp %08x  eip %08x  args %08x %08x %08x %08x %08x\n",
+			ebp,
+			READ(ebp + 4),
+			READ(ebp + 8),
+			READ(ebp + 12),
+			READ(ebp + 16),
+			READ(ebp + 20),
+			READ(ebp + 24));
+		}
+		ebp = READ(ebp);
+	}
+	return 0;
+#undef READ
+}
+```
+
+#### Exercise 12
+
+```shell
+> objdump -h obj/kern/kernel
+
+obj/kern/kernel:     file format elf32-i386
+
+Sections:
+Idx Name          Size      VMA       LMA       File off  Algn
+  0 .text         00001b29  f0100000  00100000  00001000  2**4
+                  CONTENTS, ALLOC, LOAD, READONLY, CODE
+  1 .rodata       00000718  f0101b40  00101b40  00002b40  2**5
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+  2 .stab         00003d15  f0102258  00102258  00003258  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+  3 .stabstr      00001981  f0105f6d  00105f6d  00006f6d  2**0
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+  4 .data         00009300  f0108000  00108000  00009000  2**12
+                  CONTENTS, ALLOC, LOAD, DATA
+  5 .got          00000008  f0111300  00111300  00012300  2**2
+                  CONTENTS, ALLOC, LOAD, DATA
+  6 .got.plt      0000000c  f0111308  00111308  00012308  2**2
+                  CONTENTS, ALLOC, LOAD, DATA
+  7 .data.rel.local 00001000  f0112000  00112000  00013000  2**12
+                  CONTENTS, ALLOC, LOAD, DATA
+  8 .data.rel.ro.local 00000044  f0113000  00113000  00014000  2**2
+                  CONTENTS, ALLOC, LOAD, DATA
+  9 .bss          00000648  f0113060  00113060  00014060  2**5
+                  CONTENTS, ALLOC, LOAD, DATA
+ 10 .comment      00000029  00000000  00000000  000146a8  2**0
+                  CONTENTS, READONLY
+
+> objdump -G obj/kern/kernel > kernel.stab
+```
+
+
+In `monitor.c`:
+```c
+int
+mon_backtrace(int argc, char **argv, struct Trapframe *tf)
+{
+	// Your code here.
+	 cprintf("Stack backtrace:\n");
+#define READ(x) *((uint32_t*) (x))
+
+	uint32_t ebp = read_ebp();
+	uint32_t eip = 0;
+	struct Eipdebuginfo info;
+	while (ebp) {
+		eip = READ(ebp + 4);
+		cprintf("ebp %08x  eip %08x  args %08x %08x %08x %08x %08x\n",
+			ebp,
+			eip,
+			READ(ebp + 8),
+			READ(ebp + 12),
+			READ(ebp + 16),
+			READ(ebp + 20),
+			READ(ebp + 24));
+
+		if(!debuginfo_eip(eip, &info)) {
+			cprintf("\t%s:%d: %.*s+%d\n",
+				info.eip_file,
+				info.eip_line,
+				info.eip_fn_namelen, info.eip_fn_name,
+				eip - info.eip_fn_addr);
+		}
+		ebp = READ(ebp);
+	}
+	return 0;
+#undef READ
+}
+```
+
+By searching the Internet, we found
+```
+68 - 0x44 - N_SLINE
+Line number in text segment
+
+.stabn N_SLINE, 0, desc, value
+desc  -> line_number
+value -> code_address (relocatable addr where the corresponding code starts)
+For single source lines that generate discontiguous code, such as flow of control statements, there may be more than one N_SLINE stab for the same source line. In this case there is a stab at the start of each code range, each with the same line number.
+
+```
+
+In `kdebug.c`:
+```c
+stab_binsearch(stabs, &lline, &rline, N_SLINE, addr);
+info->eip_line = stabs[lline].n_desc;
+```
