@@ -32,4 +32,4 @@ leaving test_backtrace 4
 leaving test_backtrace 5
 Welcome to the JOS kernel monitor!
 Type 'help' for a list of commands.
-qemu: terminating on signal 15 from pid 6869
+qemu: terminating on signal 15 from pid 5546

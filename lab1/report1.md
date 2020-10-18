@@ -2,7 +2,12 @@
 
 Hongyu Wen, 1800013069
 
+> All Challenges **completed**
+
+
+
 ## Grade
+
 ```
 running JOS: (1.1s) 
   printf: OK 
@@ -12,6 +17,8 @@ running JOS: (1.1s)
   backtrace lines: OK 
 Score: 50/50
 ```
+
+
 
 ## Environment Configuration
 
@@ -48,6 +55,8 @@ $ gcc -m32 -print-libgcc-file-name
  $ sudo make install
 ```
 
+
+
 ## PC Bootstrap
 
 ### Simulating the x86
@@ -70,8 +79,8 @@ houmin@cosmos:~/lab$ make
 boot block is 390 bytes (max 510)
 + mk obj/kern/kernel.img
 ```
-After compiling, we now have our boot loader(obj/boot/boot) and out kernel(obj/kern/kernel), So where is the disk?
-Actually the `kernel.img` is the disk image, which is acting as the virtual disk here. From kern/Makefrag we can see that
+After compiling, we now have our boot loader(`obj/boot/boot`) and out kernel(`obj/kern/kernel`), So where is the disk?
+Actually the `kernel.img` is the disk image, which is acting as the virtual disk here. From `kern/Makefrag` we can see that
 both our boot loader and kernel have been written to the image(using the `dd` command).
 
 Now we can running the QEMU like running a real PC.
@@ -103,8 +112,6 @@ K>
 
 #### Exercise 2
 > Use GDB's si (Step Instruction) command to trace into the ROM BIOS for a few more instructions, and try to guess what it might be doing. You might want to look at Phil Storrs I/O Ports Description, as well as other materials on the 6.828 reference materials page. No need to figure out all the details - just the general idea of what the BIOS is doing first.
-
-
 
 The first instruction is 
 
@@ -158,13 +165,13 @@ The ports `0x70` and `0x71` are corresponding to CMOS. Set `$0x70` to $0x8f$, wh
 The ports `0x92` are corresponding to PS/2 system control port A. Set bit 1 = 1 indicates A20 active.
 
 
+
+
 ## The Boot Loader
 
 #### Exercise 3
 > Take a look at the lab tools guide, especially the section on GDB commands. Even if you're familiar with GDB, this includes some esoteric GDB commands that are useful for OS work.
-> Set a breakpoint at address 0x7c00, which is where the boot sector will be loaded. Continue execution until that breakpoint. Trace through the code in boot/boot.S, using the source code and the disassembly file obj/boot/boot.asm to keep track of where you are. Also use the x/i command in GDB to disassemble sequences of instructions in the boot loader, and compare the original boot loader source code with both the disassembly in obj/boot/boot.asm and GDB.
-
-
+> Set a breakpoint at address `0x7c00`, which is where the boot sector will be loaded. Continue execution until that breakpoint. Trace through the code in `boot/boot.S`, using the source code and the disassembly file `obj/boot/boot.asm` to keep track of where you are. Also use the x/i command in GDB to disassemble sequences of instructions in the boot loader, and compare the original boot loader source code with both the disassembly in `obj/boot/boot.asm` and GDB.
 
 At first, let's read `boot.S`.
 
@@ -194,9 +201,9 @@ The `0xdf` means to enable address line A20.
 
 ```asm
  lgdt    gdtdesc
- ```
+```
  Load lgdt register.
- 
+
 ```asm
 movl    %cr0, %eax
 orl     $CR0_PE_ON, %eax
@@ -316,16 +323,17 @@ which corresponding to
 ```c
 ((void (*)(void)) (ELFHDR->e_entry))();
 ```
-in main.c.
+in `main.c`.
 
-Set a breakpoint at pc 0x7d6b (the last instruction of the boot loader) and step:
+Set a breakpoint at pc `0x7d6b` (the last instruction of the boot loader) and step:
 ```asm
 => 0x10000c:	movw   $0x1234,0x472
 0x0010000c in ?? ()
 ```
-which is the  first instruction of the kernel.
+which is the first instruction of the kernel.
 
 > Where is the first instruction of the kernel?
+
 As we have mentioned, the first instruction of the kernel is at `0x0010000c`.
 
 > How does the boot loader decide how many sectors it must read in order to fetch the entire kernel from disk? Where does it find this information?
@@ -379,7 +387,7 @@ Program Header:
 ```
 
 #### Exercise 5
->  Trace through the first few instructions of the boot loader again and identify the first instruction that would "break" or otherwise do the wrong thing if you were to get the boot loader's link address wrong. Then change the link address in boot/Makefrag to something wrong, run make clean, recompile the lab with make, and trace into the boot loader again to see what happens. Don't forget to change the link address back and make clean again afterward!
+>  Trace through the first few instructions of the boot loader again and identify the first instruction that would "break" or otherwise do the wrong thing if you were to get the boot loader's link address wrong. Then change the link address in `boot/Makefrag` to something wrong, run make clean, recompile the lab with make, and trace into the boot loader again to see what happens. Don't forget to change the link address back and make clean again afterward!
 
 We know that BIOS load boot loader at `0x7C00`. 
 ```shell
@@ -442,17 +450,17 @@ start address 0x0010000c
 #### Exercise 6
 > We can examine memory using GDB's x command. The GDB manual has full details, but for now, it is enough to know that the command x/Nx ADDR prints N words of memory at ADDR. (Note that both 'x's in the command are lowercase.) Warning: The size of a word is not a universal standard. In GNU assembly, a word is two bytes (the 'w' in xorw, which stands for word, means 2 bytes).
 
-> Reset the machine (exit QEMU/GDB and start them again). Examine the 8 words of memory at 0x00100000 at the point the BIOS enters the boot loader, and then again at the point the boot loader enters the kernel. Why are they different? What is there at the second breakpoint? (You do not really need to use QEMU to answer this question. Just think.)
+> Reset the machine (exit QEMU/GDB and start them again). Examine the 8 words of memory at `0x00100000` at the point the BIOS enters the boot loader, and then again at the point the boot loader enters the kernel. Why are they different? What is there at the second breakpoint? (You do not really need to use QEMU to answer this question. Just think.)
 
 
-Examine the 8 words of memory at 0x00100000 at the point the BIOS enters the boot loader:
+Examine the 8 words of memory at `0x00100000` at the point the BIOS enters the boot loader:
 ```gdb
 (gdb) x/8x 0x100000
 0x100000:	0x00000000	0x00000000	0x00000000	0x00000000
 0x100010:	0x00000000	0x00000000	0x00000000	0x00000000
 ```
 
-Examine the 8 words of memory at 0x00100000 at the point the boot loader enters the kernel:
+Examine the 8 words of memory at `0x00100000` at the point the boot loader enters the kernel:
 
 ```gdb
 (gdb) x/8x 0x100000
@@ -463,12 +471,14 @@ Examine the 8 words of memory at 0x00100000 at the point the boot loader enters 
 They are different because boot loader load kernel at `$0x100000`. There is the `.text` section because the entry point is `$0x10000c`.
 
 
+
+
 ## The Kernel
 
 ### Using virtual memory to work around position dependence
 
 #### Exercise 7
->  Use QEMU and GDB to trace into the JOS kernel and stop at the movl %eax, %cr0. Examine memory at 0x00100000 and at 0xf0100000.
+>  Use QEMU and GDB to trace into the JOS kernel and stop at the `movl %eax, %cr0`. Examine memory at `0x00100000` and at `0xf0100000`.
 
 ```gdb
 (gdb) x/4b 0x00100000
@@ -477,7 +487,7 @@ They are different because boot loader load kernel at `$0x100000`. There is the 
 0xf0100000 <_start+4026531828>:	0x00	0x00	0x00	0x00
 ```
 
-> Now, single step over that instruction using the stepi GDB command. Again, examine memory at 0x00100000 and at 0xf0100000. Make sure you understand what just happened.
+> Now, single step over that instruction using the stepi GDB command. Again, examine memory at `0x00100000` and at `0xf0100000`. Make sure you understand what just happened.
 
 ```gdb
 (gdb) x/4b 0x00100000
@@ -488,7 +498,7 @@ They are different because boot loader load kernel at `$0x100000`. There is the 
 Paging enabled. Two virtual addresses `0x00100000` and `0xf0100000` correspond to a same physical address.
 
 
-> What is the first instruction after the new mapping is established that would fail to work properly if the mapping weren't in place? Comment out the movl %eax, %cr0 in kern/entry.S, trace into it, and see if you were right.
+> What is the first instruction after the new mapping is established that would fail to work properly if the mapping weren't in place? Comment out the `movl %eax, %cr0` in `kern/entry.S`, trace into it, and see if you were right.
 
 ```gdb
 (gdb) 
@@ -563,9 +573,9 @@ case 'o':
     num = getuint(&ap, lflag);
     base = 8;
     goto number;
-```			
+```
 
-> Explain the interface between printf.c and console.c. Specifically, what function does console.c export? How is this function used by printf.c?
+> Explain the interface between `printf.c` and `console.c`. Specifically, what function does `console.c` export? How is this function used by `printf.c`?
 
 `console.c` exports `cputchar`, `getchar` and  `iscons`.
 `cputchar` is used as a parameter when `printf.c` calls `vprintfmt`.
@@ -673,9 +683,86 @@ We are not sure about the output after `"y="` since the content in memory after 
 Add another argument after the variable arguments to indicate the length of arguments.
 
 
-<!-- #### Challenge -->
-<!-- > Enhance the console to allow text to be printed in different colors. The traditional way to do this is to make it interpret ANSI escape sequences embedded in the text strings printed to the console, but you may use any mechanism you like. There is plenty of information on the 6.828 reference page and elsewhere on the web on programming the VGA display hardware. If you're feeling really adventurous, you could try switching the VGA hardware into a graphics mode and making the console draw text onto the graphical frame buffer. -->
+#### Challenge
+> Enhance the console to allow text to be printed in different colors. The traditional way to do this is to make it interpret ANSI escape sequences embedded in the text strings printed to the console, but you may use any mechanism you like. There is plenty of information on the 6.828 reference page and elsewhere on the web on programming the VGA display hardware. If you're feeling really adventurous, you could try switching the VGA hardware into a graphics mode and making the console draw text onto the graphical frame buffer.
 
+
+In `kern/console.c` we find
+```c
+static void
+cga_putc(int c)
+{
+	// if no attribute given, then use black on white
+	if (!(c & ~0xFF))
+		c |= 0x0700;
+```
+
+Add `color.h` in `inc/`.
+```h
+#define COLOR_BLUE 0x0100
+#define COLOR_GREEN 0x0200
+#define COLOR_RED 0x0400
+#define COLOR_WHITE 0x0700
+
+int color;
+```
+
+In `lib/printfmt.c` 
+```c
+#include <inc/color.h>
+
+...
+
+               // change color
+		case 'C':
+			num = getint(&ap, lflag);
+			color = num;
+			break;
+```
+
+In `kern/console.c`
+```c
+int color = COLOR_WHITE;
+
+static void
+cga_putc(int c)
+{
+	// if no attribute given, then use black on white
+	if (!(c & ~0xFF))
+		c |= color;
+
+	switch (c & 0xff) {
+	case '\b':
+		if (crt_pos > 0) {
+			crt_pos--;
+			crt_buf[crt_pos] = (c & ~0xff) | ' ';
+		}
+		break;
+	case '\n':
+		crt_pos += CRT_COLS;
+		color = COLOR_WHITE; // reset color
+		/* fallthru */
+	...
+}
+```
+
+In `kernel/monitor.c`
+```c
+void
+monitor(struct Trapframe *tf)
+{
+	char *buf;
+
+	cprintf("Welcome to the JOS kernel monitor!\n");
+	cprintf("Type 'help' for a list of commands.\n");
+	cprintf("Printf something in %Cred.\n", COLOR_RED);
+	cprintf("Printf something in %Cgreen.\n", COLOR_GREEN);
+	cprintf("Printf something in %Cblue.\n", COLOR_BLUE);
+	...
+}
+```
+Make qemu:
+![qemu](image/color.png)
 
 
 ### The Stack

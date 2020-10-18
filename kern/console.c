@@ -1,5 +1,6 @@
 /* See COPYRIGHT for copyright information. */
 
+#include <inc/color.h>
 #include <inc/x86.h>
 #include <inc/memlayout.h>
 #include <inc/kbdreg.h>
@@ -158,13 +159,14 @@ cga_init(void)
 }
 
 
+int color = COLOR_WHITE;
 
 static void
 cga_putc(int c)
 {
 	// if no attribute given, then use black on white
 	if (!(c & ~0xFF))
-		c |= 0x0700;
+		c |= color;
 
 	switch (c & 0xff) {
 	case '\b':
@@ -175,6 +177,7 @@ cga_putc(int c)
 		break;
 	case '\n':
 		crt_pos += CRT_COLS;
+		color = COLOR_WHITE; // reset color
 		/* fallthru */
 	case '\r':
 		crt_pos -= (crt_pos % CRT_COLS);
