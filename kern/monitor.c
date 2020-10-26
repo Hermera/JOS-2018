@@ -6,6 +6,7 @@
 #include <inc/memlayout.h>
 #include <inc/assert.h>
 #include <inc/x86.h>
+#include <inc/color.h>
 
 #include <kern/console.h>
 #include <kern/monitor.h>
@@ -58,7 +59,34 @@ int
 mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 {
 	// Your code here.
+	cprintf("Stack backtrace:\n");
+#define READ(x) *((uint32_t*) (x))
+
+	uint32_t ebp = read_ebp();
+	uint32_t eip = 0;
+	struct Eipdebuginfo info;
+	while (ebp) {
+		eip = READ(ebp + 4);
+		cprintf("ebp %08x  eip %08x  args %08x %08x %08x %08x %08x\n",
+			ebp,
+			eip,
+			READ(ebp + 8),
+			READ(ebp + 12),
+			READ(ebp + 16),
+			READ(ebp + 20),
+			READ(ebp + 24));
+
+		if(!debuginfo_eip(eip, &info)) {
+			cprintf("\t%s:%d: %.*s+%d\n",
+				info.eip_file,
+				info.eip_line,
+				info.eip_fn_namelen, info.eip_fn_name,
+				eip - info.eip_fn_addr);
+		}
+		ebp = READ(ebp);
+	}
 	return 0;
+#undef READ
 }
 
 
@@ -114,6 +142,9 @@ monitor(struct Trapframe *tf)
 
 	cprintf("Welcome to the JOS kernel monitor!\n");
 	cprintf("Type 'help' for a list of commands.\n");
+	cprintf("Printf something in %Cred.\n", COLOR_RED);
+	cprintf("Printf something in %Cgreen.\n", COLOR_GREEN);
+	cprintf("Printf something in %Cblue.\n", COLOR_BLUE);
 
 
 	while (1) {
