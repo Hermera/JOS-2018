@@ -6,6 +6,7 @@
 #include <inc/memlayout.h>
 #include <inc/assert.h>
 #include <inc/x86.h>
+#include <inc/color.h>
 
 #include <kern/console.h>
 #include <kern/monitor.h>
@@ -114,6 +115,9 @@ monitor(struct Trapframe *tf)
 
 	cprintf("Welcome to the JOS kernel monitor!\n");
 	cprintf("Type 'help' for a list of commands.\n");
+	cprintf("Printf something in %Cred.\n", COLOR_RED);
+	cprintf("Printf something in %Cgreen.\n", COLOR_GREEN);
+	cprintf("Printf something in %Cblue.\n", COLOR_BLUE);
 
 
 	while (1) {

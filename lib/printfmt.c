@@ -7,6 +7,7 @@
 #include <inc/string.h>
 #include <inc/stdarg.h>
 #include <inc/error.h>
+#include <inc/color.h>
 
 /*
  * Space or zero padding and a field width are supported for the numeric
@@ -158,6 +159,12 @@ vprintfmt(void (*putch)(int, void*), void *putdat, const char *fmt, va_list ap)
 		// character
 		case 'c':
 			putch(va_arg(ap, int), putdat);
+			break;
+
+                // change color
+		case 'C':
+			num = getint(&ap, lflag);
+			color = num;
 			break;
 
 		// error message
