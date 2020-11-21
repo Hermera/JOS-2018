@@ -44,7 +44,7 @@ mon_help(int argc, char **argv, struct Trapframe *tf)
 	return 0;
 }
 
-int
+int 
 mon_kerninfo(int argc, char **argv, struct Trapframe *tf)
 {
 	extern char _start[], entry[], etext[], edata[], end[];
