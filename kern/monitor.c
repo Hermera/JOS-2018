@@ -11,6 +11,7 @@
 #include <kern/console.h>
 #include <kern/monitor.h>
 #include <kern/kdebug.h>
+#include <kern/pmap.h>
 
 #define CMDBUF_SIZE	80	// enough for one VGA text line
 
@@ -25,6 +26,9 @@ struct Command {
 static struct Command commands[] = {
 	{ "help", "Display this list of commands", mon_help },
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
+	{ "showmappings", "Display in a useful and easy-to-read format all of the physical page mappings", showmappings },
+	{ "set_perm", "Set new perm for a certain page", set_perm },
+	{ "dump", "Dump the contents of a range of memory given either a virtual or physical address range.", dump }
 };
 
 /***** Implementations of basic kernel monitor commands *****/
@@ -87,6 +91,99 @@ mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 	}
 	return 0;
 #undef READ
+}
+
+int xtoi(char *buf) {
+	uint32_t ret = 0;
+	for (buf += 2; *buf; ++buf) {
+		if (*buf >= 'a') {
+			ret = ret * 16 + (*buf - 'a') + 10;
+		} else {
+			ret = ret * 16 + (*buf - '0');
+		}
+	}
+	return ret;
+}
+
+int btoi(char *buf) {
+	uint32_t ret = 0;
+	for (; *buf; ++buf) {
+		ret = ret * 2 + (*buf - '0');
+	}
+	return ret;
+}
+
+void pprint(pte_t *pte) {
+	cprintf("Present=%d", (bool)(*pte & PTE_P));
+	cprintf("Write=%d ", (bool)(*pte & PTE_W));
+	cprintf("User=%d\n", (bool)(*pte & PTE_U));
+}
+
+int showmappings(int argc, char **argv, struct Trapframe *tf) {
+	if (argc <= 1) {
+		cprintf("showmappings usage: showmappings begin_addr end_addr\n");
+		return 0;
+	}
+
+	uint32_t begin_addr = xtoi(argv[1]);
+	uint32_t end_addr = xtoi(argv[2]);
+	for (uint32_t now = begin_addr; now <= end_addr; now += PGSIZE) {
+		pte_t *pte = pgdir_walk(kern_pgdir, (void *)now, 1);
+		if (pte == NULL) {
+			panic("Out of memory!");
+		} else if (*pte & PTE_P) {
+			cprintf("page %x: ");
+			pprint(pte);
+		} else {
+			cprintf("page %x does not exist.\n");
+		}
+	}
+	return 0;
+}
+
+int set_perm(int argc, char **argv, struct Trapframe *tf) {
+	if (argc <= 1) {
+		cprintf("set_perm usage: set_perm addr new_perm\n");
+		return 0;
+	}
+
+	uint32_t addr = xtoi(argv[1]);
+	uint32_t perm = btoi(argv[2]);
+	uint32_t mask = PTE_P | PTE_U | PTE_W;
+
+	pte_t *pte = pgdir_walk(kern_pgdir, (void *)addr, 1);
+
+	if (pte == NULL) {
+		panic("Out of memory!");
+	} else {
+		cprintf("Before change: ");
+		pprint(pte);
+		*pte &= ~mask;
+		*pte |= perm;
+		cprintf("After change: ");
+		pprint(pte);
+	}
+	return 0;
+}
+
+int dump(int argc, char **argv, struct Trapframe *tf) {
+	if (argc <= 3) {
+		cprintf("dump usage: dump [V/P] begin_addr num_of_addr\n");
+		return 0;
+	}
+
+	uint32_t begin_addr = xtoi(argv[2]);
+	uint32_t end_addr = xtoi(argv[3]);
+	if (*argv[1] == 'P') {
+		begin_addr += KERNBASE;
+		end_addr += KERNBASE;
+	}
+
+	for (; begin_addr <= end_addr; begin_addr += 1) {
+		uint8_t * addr = (uint8_t *) begin_addr;
+		cprintf("%x: %x\n", addr, *addr);
+	}
+	return 0;
 }
 
 
