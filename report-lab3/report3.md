@@ -151,3 +151,38 @@ env_create(uint8_t *binary, enum EnvType type)
 	newenv_store->env_type = type;
 }
 ```
+
+Now we need to check the correctness of our code. Use `make qemu-gdb` and set a breakpoint at `env_pop_tf`:
+```shell
+(gdb) b env_pop_tf
+Breakpoint 1 at 0xf0103bbf: file kern/env.c, line 475.
+```
+
+ Single step through this function using si; the processor should enter user mode after the iret instruction. 
+```shell
+(gdb) c
+Continuing.
+=> 0xf0103bbf <env_pop_tf>:	push   %ebp
+
+...
+
+(gdb) 
+=> 0xf0103bd7 <env_pop_tf+24>:	add    $0x8,%esp
+0xf0103bd7	476	//
+(gdb) 
+=> 0xf0103bda <env_pop_tf+27>:	iret   
+0xf0103bda	476	//
+(gdb) 
+=> 0x800020:	cmp    $0xeebfe000,%esp
+                        // At the label start in lib/entry.S
+```
+
+Set a breakpoint at the `int $0x30` in `sys_cputs()` by scanning `obj/user/hello.asm`.
+```shell
+(gdb) b *0x800b91
+Breakpoint 2 at 0x800b91
+(gdb) c
+Continuing.
+=> 0x800b91:	int    $0x30
+```
+It runs successfully.
