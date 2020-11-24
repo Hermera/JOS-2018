@@ -81,45 +81,52 @@ trap_init(void)
 
 	// LAB 3: Your code here.
 
-	void T_DIVIDE_handler();
-	void T_DEBUG_handler();
-	void T_NMI_handler();
-	void T_BRKPT_handler();
-	void T_OFLOW_handler();
-	void T_BOUND_handler();
-	void T_ILLOP_handler();
-	void T_DEVICE_handler();
-	void T_DBLFLT_handler();
-	void T_TSS_handler();
-	void T_SEGNP_handler();
-	void T_STACK_handler();
-	void T_GPFLT_handler();
-	void T_PGFLT_handler();
-	void T_FPERR_handler();
-	void T_ALIGN_handler();
-	void T_MCHK_handler();
-	void T_SIMDERR_handler();
+	/* void T_DIVIDE_handler(); */
+	/* void T_DEBUG_handler(); */
+	/* void T_NMI_handler(); */
+	/* void T_BRKPT_handler(); */
+	/* void T_OFLOW_handler(); */
+	/* void T_BOUND_handler(); */
+	/* void T_ILLOP_handler(); */
+	/* void T_DEVICE_handler(); */
+	/* void T_DBLFLT_handler(); */
+	/* void T_TSS_handler(); */
+	/* void T_SEGNP_handler(); */
+	/* void T_STACK_handler(); */
+	/* void T_GPFLT_handler(); */
+	/* void T_PGFLT_handler(); */
+	/* void T_FPERR_handler(); */
+	/* void T_ALIGN_handler(); */
+	/* void T_MCHK_handler(); */
+	/* void T_SIMDERR_handler(); */
 
 	// See 9.9 of the i386 reference
 
-	SETGATE(idt[T_DIVIDE], 0, GD_KT, T_DIVIDE_handler, 0);
-	SETGATE(idt[T_DEBUG], 0, GD_KT, T_DEBUG_handler, 0);
-	SETGATE(idt[T_NMI], 0, GD_KT, T_NMI_handler, 0);
-	SETGATE(idt[T_BRKPT], 1, GD_KT, T_BRKPT_handler, 0);
-	SETGATE(idt[T_OFLOW], 1, GD_KT, T_OFLOW_handler, 0);
-	SETGATE(idt[T_BOUND], 0, GD_KT, T_BOUND_handler, 0);
-	SETGATE(idt[T_ILLOP], 0, GD_KT, T_ILLOP_handler, 0);
-	SETGATE(idt[T_DEVICE], 0, GD_KT, T_DEVICE_handler, 0);
-	SETGATE(idt[T_DBLFLT], 0, GD_KT, T_DBLFLT_handler, 0);
-	SETGATE(idt[T_TSS], 0, GD_KT, T_TSS_handler, 0);
-	SETGATE(idt[T_SEGNP], 0, GD_KT, T_SEGNP_handler, 0);
-	SETGATE(idt[T_STACK], 0, GD_KT, T_STACK_handler, 0);
-	SETGATE(idt[T_GPFLT], 0, GD_KT, T_GPFLT_handler, 0);
-	SETGATE(idt[T_PGFLT], 0, GD_KT, T_PGFLT_handler, 0);
-	SETGATE(idt[T_FPERR], 0, GD_KT, T_FPERR_handler, 0);
-	SETGATE(idt[T_ALIGN], 0, GD_KT, T_ALIGN_handler, 0);
-	SETGATE(idt[T_MCHK], 0, GD_KT, T_MCHK_handler, 0);
-	SETGATE(idt[T_SIMDERR], 0, GD_KT, T_SIMDERR_handler, 0);
+	/* SETGATE(idt[T_DIVIDE], 0, GD_KT, T_DIVIDE_handler, 0); */
+	/* SETGATE(idt[T_DEBUG], 0, GD_KT, T_DEBUG_handler, 0); */
+	/* SETGATE(idt[T_NMI], 0, GD_KT, T_NMI_handler, 0); */
+	/* SETGATE(idt[T_BRKPT], 1, GD_KT, T_BRKPT_handler, 0); */
+	/* SETGATE(idt[T_OFLOW], 1, GD_KT, T_OFLOW_handler, 0); */
+	/* SETGATE(idt[T_BOUND], 0, GD_KT, T_BOUND_handler, 0); */
+	/* SETGATE(idt[T_ILLOP], 0, GD_KT, T_ILLOP_handler, 0); */
+	/* SETGATE(idt[T_DEVICE], 0, GD_KT, T_DEVICE_handler, 0); */
+	/* SETGATE(idt[T_DBLFLT], 0, GD_KT, T_DBLFLT_handler, 0); */
+	/* SETGATE(idt[T_TSS], 0, GD_KT, T_TSS_handler, 0); */
+	/* SETGATE(idt[T_SEGNP], 0, GD_KT, T_SEGNP_handler, 0); */
+	/* SETGATE(idt[T_STACK], 0, GD_KT, T_STACK_handler, 0); */
+	/* SETGATE(idt[T_GPFLT], 0, GD_KT, T_GPFLT_handler, 0); */
+	/* SETGATE(idt[T_PGFLT], 0, GD_KT, T_PGFLT_handler, 0); */
+	/* SETGATE(idt[T_FPERR], 0, GD_KT, T_FPERR_handler, 0); */
+	/* SETGATE(idt[T_ALIGN], 0, GD_KT, T_ALIGN_handler, 0); */
+	/* SETGATE(idt[T_MCHK], 0, GD_KT, T_MCHK_handler, 0); */
+	/* SETGATE(idt[T_SIMDERR], 0, GD_KT, T_SIMDERR_handler, 0); */
+
+	// challenge:
+	extern void (*funcs[])();
+	for (int i = 0; i <= 19; ++i)
+		if (i != 9 && i != 15) {
+			SETGATE(idt[i], 0, GD_KT, funcs[i], 0);
+		}
 
 	// Per-CPU setup
 	trap_init_percpu();

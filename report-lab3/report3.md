@@ -353,3 +353,94 @@ badsegment: OK (1.6s)
     (Old jos.out.badsegment failure log removed)
 Part A score: 30/30
 ```
+
+### Challenge 1
+
+Switch between laying down code and data in the assembler by using the directives .text and .data.
+
+```asm
+#define EC(name, num)\
+	.data			;\
+	    .long name		;\
+	.text               ;\
+	    .global name    ;\
+	    .type name, @function       ;\
+	.align 2                        ;\
+name:\
+    pushl $(num)                ;\
+    jmp _alltraps
+
+
+#define NOEC(name, num)\
+	.data			;\
+	    .long name		;\
+	.text               ;\
+	    .global name    ;\
+	    .type name, @function       ;\
+	.align 2                        ;\
+name:\
+    pushl $0                    ;\
+    pushl $(num)                ;\
+    jmp _alltraps
+
+
+#define PAD()\
+	.data			;\
+	    .long 0		
+
+
+.data
+	.p2align 2
+	.globl funcs
+
+funcs:
+
+.text
+
+/*
+ * Lab 3: Your code here for generating entry points for the different traps.
+ */
+	NOEC(T_DIVIDE_handler, T_DIVIDE)
+	NOEC(T_DEBUG_handler, T_DEBUG)
+	NOEC(T_NMI_handler, T_NMI)
+	NOEC(T_BRKPT_handler, T_BRKPT)
+	NOEC(T_OFLOW_handler, T_OFLOW)
+	NOEC(T_BOUND_handler, T_BOUND)
+	NOEC(T_ILLOP_handler, T_ILLOP)
+	NOEC(T_DEVICE_handler, T_DEVICE)
+	EC(T_DBLFLT_handler, T_DBLFLT)
+	PAD(trap9, 9)
+	EC(T_TSS_handler, T_TSS)
+	EC(T_SEGNP_handler, T_SEGNP)
+	EC(T_STACK_handler, T_STACK)
+	EC(T_GPFLT_handler, T_GPFLT)
+	EC(T_PGFLT_handler, T_PGFLT)
+	PAD(trap15, 15)
+	NOEC(T_FPERR_handler, T_FPERR)
+	EC(T_ALIGN_handler, T_ALIGN)
+	NOEC(T_MCHK_handler, T_MCHK)
+	NOEC(T_SIMDERR_handler, T_SIMDERR)
+
+
+_alltraps:
+...
+```
+
+In `trap.c`:
+
+```c
+	extern void (*funcs[])();
+	for (int i = 0; i <= 19; ++i)
+		if (i != 9 && i != 15) {
+			SETGATE(idt[i], 0, GD_KT, funcs[i], 0);
+		}
+```
+
+Run `make grade` we get
+
+```shell
+divzero: OK (1.9s) 
+softint: OK (1.0s) 
+badsegment: OK (1.6s) 
+Part A score: 30/30
+```
