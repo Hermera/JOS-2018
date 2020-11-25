@@ -444,3 +444,73 @@ softint: OK (1.0s)
 badsegment: OK (1.6s) 
 Part A score: 30/30
 ```
+
+### Questions
+
+1. Different exception will be handled in different ways and provide different parameters. Therefore, each interrupt / exception need to have their own processing function; if not, in the current imp
+lementation can not distinguish what is happening, what kind of abnormal. 
+
+2. If allowed to directly call the INT 14 (page fault), the user can check without a kernel permission to allocate memory, which is a big loophole.
+
+
+### Exercise 5
+
+In `trap_dispatch`:
+
+```c
+...
+	if (tf->tf_trapno == T_PGFLT)
+		page_fault_handler(tf);
+```
+```
+
+And we get grades.
+```shell
+faultread: OK (2.2s) 
+    (Old jos.out.faultread failure log removed)
+faultreadkernel: OK (1.6s) 
+    (Old jos.out.faultreadkernel failure log removed)
+faultwrite: OK (1.3s) 
+    (Old jos.out.faultwrite failure log removed)
+faultwritekernel: OK (1.8s) 
+    (Old jos.out.faultwritekernel failure log removed)
+```
+
+
+### Exercise 6
+
+> The int instruction allows a User Mode process to issue an interrupt signal that has an arbitrary vector ranging from 0 to 255. Therefore, initialization of the IDT must be done carefully, to block illegal interrupts and exceptions simulated by User Mode processes via int instructions. This can be achieved by setting the DPL field of the Interrupt or Trap Gate Descriptor to 0. If the process attempts to issue one of these interrupt signals, the control unit checks the CPL value against the DPL field and issues a “General protection” exception.
+
+> In a few cases, however, a User Mode process must be able to issue a programmed exception. To allow this, it is sufficient to set the DPL field of the corresponding Interrupt or Trap Gate Descriptors to 3 — that is, as high as possible.
+
+
+In `trap_dispatch`:
+```c
+	switch (tf->tf_trapno) {
+	case T_PGFLT:
+		page_fault_handler(tf);
+		return;
+	case T_BRKPT:
+		monitor(tf);
+		return;
+	}
+
+```
+
+In `trap_init`:
+
+```c
+	extern void (*funcs[])();
+	for (int i = 0; i <= 19; ++i)
+		if (i == T_BRKPT) {
+			SETGATE(idt[i], 0, GD_KT, funcs[i], 3);
+		} else if (i != 9 && i != 15) {
+			SETGATE(idt[i], 0, GD_KT, funcs[i], 0);
+		}
+```
+
+```shell
+breakpoint: OK (1.3s) 
+    (Old jos.out.breakpoint failure log removed)
+```
+

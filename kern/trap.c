@@ -124,7 +124,9 @@ trap_init(void)
 	// challenge:
 	extern void (*funcs[])();
 	for (int i = 0; i <= 19; ++i)
-		if (i != 9 && i != 15) {
+		if (i == T_BRKPT) {
+			SETGATE(idt[i], 0, GD_KT, funcs[i], 3);
+		} else if (i != 9 && i != 15) {
 			SETGATE(idt[i], 0, GD_KT, funcs[i], 0);
 		}
 
@@ -206,6 +208,15 @@ trap_dispatch(struct Trapframe *tf)
 {
 	// Handle processor exceptions.
 	// LAB 3: Your code here.
+
+	switch (tf->tf_trapno) {
+	case T_PGFLT:
+		page_fault_handler(tf);
+		return;
+	case T_BRKPT:
+		monitor(tf);
+		return;
+	}
 
 	// Unexpected trap: The user process or the kernel has a bug.
 	print_trapframe(tf);
