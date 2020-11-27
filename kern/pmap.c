@@ -1,4 +1,4 @@
-/* See COPYRIGHT for copyright information. */
+        /* See COPYRIGHT for copyright information. */
 
 #include <inc/x86.h>
 #include <inc/mmu.h>
@@ -604,7 +604,22 @@ int
 user_mem_check(struct Env *env, const void *va, size_t len, int perm)
 {
 	// LAB 3: Your code here.
+	const void * begin = ROUNDDOWN(va, PGSIZE);
+	const void * end = ROUNDUP(va + len, PGSIZE);
+	pte_t * pgdir = env->env_pgdir;
 
+	perm |= PTE_P | PTE_U;
+	while (begin < end) {
+		pte_t *p = pgdir_walk(pgdir, begin, 0);
+		if (!p || (*p & perm) != perm) {
+			if ((uint32_t)begin < (uint32_t)va)
+				user_mem_check_addr = (uintptr_t)va;
+			else
+				user_mem_check_addr = (uintptr_t)begin;
+			return -E_FAULT;
+		}
+		begin += PGSIZE;
+	}
 	return 0;
 }
 
@@ -618,6 +633,7 @@ user_mem_check(struct Env *env, const void *va, size_t len, int perm)
 void
 user_mem_assert(struct Env *env, const void *va, size_t len, int perm)
 {
+	/* cprintf("In user_mem_assert!\n"); */
 	if (user_mem_check(env, va, len, perm | PTE_U) < 0) {
 		cprintf("[%08x] user_mem_check assertion failure for "
 			"va %08x\n", env->env_id, user_mem_check_addr);

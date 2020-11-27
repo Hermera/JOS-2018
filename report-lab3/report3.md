@@ -6,7 +6,31 @@ Hongyu Wen, 1800013069
 >
 > All questions answered.
 >
-> Challenge 2 completed.
+> Challenge 1 completed.
+
+## Grade
+
+```shell
+divzero: OK (3.2s) 
+softint: OK (2.4s) 
+badsegment: OK (2.4s) 
+Part A score: 30/30
+
+faultread: OK (3.4s) 
+faultreadkernel: OK (2.6s) 
+faultwrite: OK (3.3s) 
+faultwritekernel: OK (2.8s) 
+breakpoint: OK (3.2s) 
+testbss: OK (2.8s) 
+hello: OK (3.3s) 
+buggyhello: OK (2.6s) 
+    (Old jos.out.buggyhello failure log removed)
+buggyhello2: OK (3.3s) 
+evilhello: OK (2.7s) 
+Part B score: 50/50
+
+Score: 80/80
+```
 
 
 At first, we need to fix the link script in `kern/kernel.ld`:
@@ -512,5 +536,129 @@ In `trap_init`:
 ```shell
 breakpoint: OK (1.3s) 
     (Old jos.out.breakpoint failure log removed)
+```
+
+### Questions
+
+3. If we set dpl=0 at idx[T_BRKPT], it will generate a general protection fault; otherwise it will generate a break point exception.
+Because it try to run `int 3` which is a system-level instruction. If CPL of current program less than DPL, it will generate a general protection fault.
+In experiments, when setting dlp=0, the simulator crashs (because the handler of protection fault is not implemented yet.)
+
+4. For protection.
+
+
+### Exercise 7
+
+First we take a look at `lib/syscall.c`.
+
+```c
+	asm volatile("int %1\n"
+		     : "=a" (ret)
+		     : "i" (T_SYSCALL),
+		       "a" (num),
+		       "d" (a1),
+		       "c" (a2),
+		       "b" (a3),
+		       "D" (a4),
+		       "S" (a5)
+		     : "cc", "memory");
+
+```
+which means `int T_SYSCALL` and restore `num, a1, a2, a3, a4, a5` in `%eax, %edx, %ecx, %ebx, %edi, %esi`.Thus
+
+```c
+	case T_SYSCALL:
+		if (tf->tf_regs.reg_eax >= NSYSCALLS) break;
+		tf->tf_regs.reg_eax = syscall(
+			tf->tf_regs.reg_eax,
+			tf->tf_regs.reg_edx,
+			tf->tf_regs.reg_ecx,
+			tf->tf_regs.reg_ebx,
+			tf->tf_regs.reg_edi,
+			tf->tf_regs.reg_esi
+			);
+		return;
+	}
+```
+
+In `syscall.c`:
+
+```c
+
+	user_mem_assert(curenv, s, len, PTE_U | PTE_P);
+...
+	switch (syscallno) {
+	case SYS_cputs:
+		sys_cputs((char *)a1, a2);
+	case SYS_cgetc:
+		sys_cgetc();
+	case SYS_env_destroy:
+		sys_env_destroy(a1);
+	case SYS_getenvid:
+		sys_getenvid();
+	default:
+		return -E_INVAL;
+	}
+```
+
+In `pmap.c`:
+
+```c
+int
+user_mem_check(struct Env *env, const void *va, size_t len, int perm)
+{
+	// LAB 3: Your code here.
+	const void * begin = ROUNDDOWN(va, PGSIZE);
+	const void * end = ROUNDUP(va + len, PGSIZE);
+	pte_t * pgdir = env->env_pgdir;
+
+	perm |= PTE_P | PTE_U;
+	while (begin < end) {
+		pte_t *p = pgdir_walk(pgdir, begin, 0);
+		if (!p || (*p & perm) != perm) {
+			user_mem_check_addr = (uintptr_t)begin;
+			return -E_FAULT;
+		}
+		begin += PGSIZE;
+	}
+	return 0;
+}
+```
+
+### Exercise 8
+
+In `libmain.c`:
+
+```
+	envid_t envid = sys_getenvid();
+	// We have implemented this function at Exercise 7.
+	thisenv = envs + ENVX(envid);
+```
+
+`make run-hello` and we can see 
+```shell
+hello, world
+Incoming TRAP frame at 0xefffffbc
+i am environment 00000000
+```
+> If it still faults, you probably haven't mapped the UENVS area user-readable (back in Part A in pmap.c; this is the first time we've actually used the UENVS area).
+
+
+
+### Exercise 9 & 10
+
+First, in `trap.c`:
+
+```c
+	if ((tf->tf_cs & 3) == 0) {
+		panic("page_fault_handler: page fault in kernel.\n")
+	}
+
+``` 
+
+Other things we have done in Exercise 7. Run `buggyhello` and we will see
+```shell
+[00001000] free env 00001000
+Destroyed the only environment - nothing more to do!
 ```
 

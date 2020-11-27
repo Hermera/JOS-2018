@@ -103,6 +103,13 @@ funcs:
 	NOEC(T_MCHK_handler, T_MCHK)
 	NOEC(T_SIMDERR_handler, T_SIMDERR)
 
+	.data
+	.space 112
+
+	.text
+	NOEC(T_SYSCALL_handler, T_SYSCALL)
+
+
 
 	/*
 	 * Lab 3: Your code here for _alltraps
