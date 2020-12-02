@@ -54,3 +54,19 @@ check_page_free_list() succeeded!
 check_page_alloc() succeeded!
 check_page() succeeded!
 ```
+
+### Question
+
+1. In `boot.S`:
+```asm
+  # Jump to next instruction, but in 32-bit code segment.
+  # Switches processor into 32-bit mode.
+  ljmp    $PROT_MODE_CSEG, $protcseg
+```
+Now CPU is under real-mode so it can jump to a physical address directly. But in `mpentry.S`, the BSP has already be in protected-mode thus we need to calculate the physical address by `MPBOOTPHYS`. I guess
+```
+	# Call mp_main().  (Exercise for the reader: why the indirect call?)
+	movl    $mp_main, %eax
+	call    *%eax
+```
+that is the same reason.
