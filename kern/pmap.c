@@ -226,7 +226,7 @@ mem_init(void)
 	// Permissions: kernel RW, user NONE
 	// Your code goes here:
 
-
+	
 	// Initialize the SMP-related parts of the memory map
 	mem_init_mp();
 
@@ -322,6 +322,8 @@ page_init(void)
 	int num_boot_alloc = ((uint32_t)boot_alloc(0) - KERNBASE) / PGSIZE;
 	int num_iohole = (EXTPHYSMEM - IOPHYSMEM) / PGSIZE;
 	for (i = 0; i < npages; i++) {
+		if (i == MPENTRY_PADDR / PGSIZE)
+			continue; // Can not use MPENTRY_PADDR
 		if (i == 0) {
 			// reflect 1)
 			pages[i].pp_ref = 1;
@@ -646,7 +648,19 @@ mmio_map_region(physaddr_t pa, size_t size)
 	// Hint: The staff solution uses boot_map_region.
 	//
 	// Your code here:
-	panic("mmio_map_region not implemented");
+
+	physaddr_t head = ROUNDDOWN(pa, PGSIZE);
+	physaddr_t tail = ROUNDUP(pa + size, PGSIZE);
+	size_t len = (size_t)(tail - head);
+	if (base + len > MMIOLIM) {
+		panic("mmio_map_region overflowed");
+	}
+
+	boot_map_region(kern_pgdir, base, len,  head, PTE_PCD | PTE_PWT);
+	base += len;
+
+	return (void *) (base - len);
+	/* panic("mmio_map_region not implemented"); */
 }
 
 static uintptr_t user_mem_check_addr;
