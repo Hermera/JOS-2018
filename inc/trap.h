@@ -44,7 +44,7 @@
 #include <inc/types.h>
 
 struct PushRegs {
-	/* registers as pushed by pusha */
+	/* registers as pushed by pushal */
 	uint32_t reg_edi;
 	uint32_t reg_esi;
 	uint32_t reg_ebp;
