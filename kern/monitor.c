@@ -29,7 +29,9 @@ static struct Command commands[] = {
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
 	{ "showmappings", "Display in a useful and easy-to-read format all of the physical page mappings", showmappings },
 	{ "set_perm", "Set new perm for a certain page", set_perm },
-	{ "dump", "Dump the contents of a range of memory given either a virtual or physical address range.", dump }
+	{ "dump", "Dump the contents of a range of memory given either a virtual or physical address range.", dump },
+	{ "continue", "continue execution from the current location ", mon_continue },
+	{ "stepi", "single-step one instruction", mon_stepi }
 };
 
 /***** Implementations of basic kernel monitor commands *****/
@@ -93,6 +95,35 @@ mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 	return 0;
 #undef READ
 }
+
+int mon_continue(int argc, char **argv, struct Trapframe *tf) {
+	// Continue execution.
+
+	if (tf == NULL) {
+		cprintf("No current env!\n");
+		return 0;
+	}
+
+	// set trap bit = 0
+	// disable single-step mode
+	tf->tf_eflags &= ~(FL_TF);
+	return -1;
+}
+
+
+int mon_stepi(int argc, char **argv, struct Trapframe *tf) {
+	// single-step execution
+
+	if (tf == NULL) {
+		cprintf("No current env!\n");
+		return 0;
+	}
+
+	// set trap bit = 1
+	tf->tf_eflags |= FL_TF;
+	return -1;
+}
+
 
 int xtoi(char *buf) {
 	uint32_t ret = 0;

@@ -124,7 +124,7 @@ trap_init(void)
 	// challenge:
 	extern void (*funcs[])();
 	for (int i = 0; i <= 19; ++i)
-		if (i == T_BRKPT) {
+		if (i == T_BRKPT || i == T_DEBUG) {
 			SETGATE(idt[i], 0, GD_KT, funcs[i], 3);
 		} else if (i != 9 && i != 15) {
 			SETGATE(idt[i], 0, GD_KT, funcs[i], 0);
@@ -214,6 +214,9 @@ trap_dispatch(struct Trapframe *tf)
 		page_fault_handler(tf);
 		return;
 	case T_BRKPT:
+		monitor(tf);
+		return;
+	case T_DEBUG:
 		monitor(tf);
 		return;
 	case T_SYSCALL:

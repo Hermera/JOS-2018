@@ -6,7 +6,7 @@ Hongyu Wen, 1800013069
 >
 > All questions answered.
 >
-> Challenge 1 completed.
+> Challenge 1 & 2 completed.
 
 ## Grade
 
@@ -536,6 +536,51 @@ In `trap_init`:
 ```shell
 breakpoint: OK (1.3s) 
     (Old jos.out.breakpoint failure log removed)
+```
+
+### Challenge 2
+
+At first we need to know:
+![eflags](figure/eflags.png)
+
+> Trap (bit 8) — Set to enable single-step mode for debugging; clear to disable single-step mode. In singlestep mode, the processor generates a debug exception after each instruction. This allows the execution state of a program to be inspected after each instruction. If an application program sets the TF flag using a POPF, POPFD, or IRET instruction, a debug exception is generated after the instruction that follows the POPF, POPFD, or IRET.
+
+Thus we have:
+```c
+int mon_continue(int argc, char **argv, struct Trapframe *tf) {
+	// Continue execution.
+
+	if (tf == NULL) {
+		cprintf("No current env!\n");
+		return 0;
+	}
+
+	// set trap bit = 0
+	// disable single-step mode
+	tf->tf_eflags &= ~(FL_TF);
+	return -1;
+}
+
+
+int mon_stepi(int argc, char **argv, struct Trapframe *tf) {
+	// single-step execution
+
+	if (tf == NULL) {
+		cprintf("No current env!\n");
+		return 0;
+	}
+
+	// set trap bit = 1
+	tf->tf_eflags |= FL_TF;
+	return -1;
+}
+```
+
+In `trap_dispatch`:
+```c
+	case T_DEBUG:
+		monitor(tf);
+		return;
 ```
 
 ### Questions
