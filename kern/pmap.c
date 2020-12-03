@@ -226,6 +226,7 @@ mem_init(void)
 	// Permissions: kernel RW, user NONE
 	// Your code goes here:
 
+	boot_map_region(kern_pgdir, KERNBASE, 0x10000000, 0x0, PTE_W);
 	
 	// Initialize the SMP-related parts of the memory map
 	mem_init_mp();
@@ -278,6 +279,12 @@ mem_init_mp(void)
 	//     Permissions: kernel RW, user NONE
 	//
 	// LAB 4: Your code here:
+
+	uintptr_t base = KERNBASE - KSTKSIZE;
+	for (int i = 0; i < NCPU; ++i) {
+		boot_map_region(kern_pgdir, base, KSTKSIZE, PADDR(percpu_kstacks[i]), PTE_W);
+		base -= KSTKSIZE + KSTKGAP;
+	}
 
 }
 
@@ -652,11 +659,11 @@ mmio_map_region(physaddr_t pa, size_t size)
 	physaddr_t head = ROUNDDOWN(pa, PGSIZE);
 	physaddr_t tail = ROUNDUP(pa + size, PGSIZE);
 	size_t len = (size_t)(tail - head);
-	if (base + len > MMIOLIM) {
+	if (base + len >= MMIOLIM) {
 		panic("mmio_map_region overflowed");
 	}
 
-	boot_map_region(kern_pgdir, base, len,  head, PTE_PCD | PTE_PWT);
+	boot_map_region(kern_pgdir, base, len, head, PTE_PCD | PTE_PWT | PTE_W);
 	base += len;
 
 	return (void *) (base - len);
