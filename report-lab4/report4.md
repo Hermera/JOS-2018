@@ -169,3 +169,268 @@ All done in environment 00001001.
 3. Because it is in kernel address.
 4. In `env.c`: `env_pop_tf(&curenv->env_tf);`
 
+### Exercise 7
+
+```c
+static envid_t
+sys_exofork(void)
+{
+	struct Env * e;
+	int r = env_alloc(&e, curenv->env_id);
+	if (r < 0) return r; // Errors
+
+	e->env_tf = curenv->env_tf;
+	e->env_status = ENV_NOT_RUNNABLE;
+
+	e->env_tf.tf_regs.reg_eax = 0;
+	// sys_exofork will appear to return 0 in child env.
+	return e->env_id;
+}
+```
+
+```c
+static int
+sys_env_set_status(envid_t envid, int status)
+{
+	struct Env * e;
+	int r = envid2env(envid, &e, 1);
+	if (r) return r;
+	if (status != ENV_RUNNABLE && status != ENV_NOT_RUNNABLE) {
+		return -E_INVAL;
+		// check for legal status
+	}
+
+	e->env_status = status;
+	return 0;
+}
+```
+
+```c
+static int
+sys_page_alloc(envid_t envid, void *va, int perm)
+{
+	struct Env * e;
+	int r = envid2env(envid, &e, 1);
+	if (r) return r;
+
+	bool check1 = ((perm & (PTE_U | PTE_P)) == (PTE_U | PTE_P));
+	bool check2 = ((perm & (~PTE_SYSCALL)) == 0);
+	bool check3 = (va == ROUNDDOWN(va, PGSIZE));
+	if (va >= (void*)UTOP || !check1 || !check2 || !check3) {
+		return -E_INVAL;
+		// Invalid parameters
+	}
+
+	struct PageInfo * p = page_alloc(1); // init to zero
+	if (p == NULL) return -E_NO_MEM; // No enough memory
+
+	r = page_insert(e->env_pgdir, p, va, perm);
+	if (r) {
+		page_free(p);
+		// fail to insert the page and free the page
+		return r;
+	}
+
+	return 0;
+	/* panic("sys_page_alloc not implemented"); */
+}
+```
+
+```c
+static int
+sys_page_map(envid_t srcenvid, void *srcva,
+	     envid_t dstenvid, void *dstva, int perm)
+{
+	int r;
+	struct Env *src, *dst;
+
+	r = envid2env(srcenvid, &src, 1);
+	if (r) return r;
+	r = envid2env(dstenvid, &dst, 1);
+	if (r) return r;
+
+	if (srcva >= (void *)UTOP || srcva != ROUNDDOWN(srcva, PGSIZE)) return -E_INVAL;
+	if (dstva >= (void *)UTOP || dstva != ROUNDDOWN(dstva, PGSIZE)) return -E_INVAL;
+	bool check1 = ((perm & (PTE_U | PTE_P)) == (PTE_U | PTE_P));
+	bool check2 = ((perm & (~PTE_SYSCALL)) == 0);
+	if (!check1 || !check2) return -E_INVAL;
+
+	pte_t *pte;
+	struct PageInfo *p = page_lookup(src->env_pgdir, srcva, &pte);
+	if (!p) return -E_INVAL;
+	if (!(*pte & PTE_W) && (perm & PTE_W)) return -E_INVAL;
+
+	r = page_insert(dst->env_pgdir, p, dstva, perm);
+	// Just another reference to the page
+	if (r) return r;
+	return 0;
+}
+```
+
+```c
+static int
+sys_page_unmap(envid_t envid, void *va)
+{
+	int r;
+	struct Env *e;
+	r = envid2env(envid, &e, 1);
+	if (r) return r;
+	if (va >= (void *)UTOP || va != ROUNDDOWN(va, PGSIZE)) return -E_INVAL;
+
+	page_remove(e->env_pgdir, va);
+	return 0;
+}
+```
+
+After all, we have
+
+```shell
+dumbfork: OK (1.2s) 
+Part A score: 5/5
+```
+
+## Part B: Copy-on-Write Fork
+
+In `dumbfork.c`:
+```c
+void
+duppage(envid_t dstenv, void *addr)
+{
+	int r;
+	if ((r = sys_page_alloc(dstenv, addr, PTE_P|PTE_U|PTE_W)) < 0)
+		panic("sys_page_alloc: %e", r);
+	// allocate new page for child env
+	
+	if ((r = sys_page_map(dstenv, addr, 0, UTEMP, PTE_P|PTE_U|PTE_W)) < 0)
+		panic("sys_page_map: %e", r);
+	// map parent env virtual page(UTEMP) to the page
+
+	memmove(UTEMP, addr, PGSIZE);
+	// modify the page
+
+	if ((r = sys_page_unmap(0, UTEMP)) < 0)
+		panic("sys_page_unmap: %e", r);
+	// Unmap the page
+}
+```
+
+
+### Exercise 8
+
+
+```c
+static int
+sys_env_set_pgfault_upcall(envid_t envid, void *func)
+{
+	struct Env * e;
+	int r = envid2env(envid, &e, 1);
+	if (r) return r;
+
+	e->env_pgfault_upcall = func; 
+	return 0;
+}
+```
+
+### Exercise 9
+
+```c
+	if (curenv->env_pgfault_upcall) {
+		uintptr_t stacktop = UXSTACKTOP;
+		if (UXSTACKTOP - PGSIZE <= tf->tf_esp && tf->tf_esp < UXSTACKTOP) {
+			// [UXSTACKTOP - PGSIZE, UXSTACKTOP ) is the user exception stack
+			// Already in user exception stack: handler raise fault
+			stacktop = tf->tf_esp;
+		}
+		uint32_t size = sizeof(struct UTrapframe) + sizeof(uint32_t);
+		// Push a UTrapframe
+		// Push one word of blank for convenience
+
+		user_mem_assert(curenv, (void *)stacktop - size, size, PTE_U | PTE_W);
+		struct UTrapframe utf = (struct UTrapframe *)(stacktop - size);
+
+		utf->utf_fault_va = fault_va;
+		utf->utf_err = tf->tf_err;
+		utf->utf_regs = tf->tf_regs;
+		utf->utf_eip = tf->tf_eip;
+		utf->utf_eflags = tf->tf_eflags;
+		utf->utf_esp = tf->tf_esp;
+
+		curenv->env_tf.tf_eip = (uintptr_t)curenv->env_pgfault_upcall;
+		curenv->env_tf.tf_esp = (uintptr_t)utf;
+		env_run(curenv);
+	}
+```
+
+### Exercise 10
+
+```asm
+	// LAB 4: Your code here.
+	addl $8, %esp        // ignore utf_fault_va and utf_err
+	movl 40(%esp), %eax  // move utf_esp to eax (esp when interrupt occured)
+	movl 32(%esp), %ecx  // move utf_eip to ecx (eip when interrupt occured)
+	movl %ecx, -4(%eax)  // push utf_eip to user stack
+
+	// Restore the trap-time registers.  After you do this, you
+	// can no longer modify any general-purpose registers.
+	// LAB 4: Your code here.
+
+	popal                // restore all registers
+	addl $4, %esp        // ignore utf_eip
+
+	// Restore eflags from the stack.  After you do this, you can
+	// no longer use arithmetic operations or anything else that
+	// modifies eflags.
+	// LAB 4: Your code here.
+
+	popfl                // restore eflags
+
+	// Switch back to the adjusted trap-time stack.
+	// LAB 4: Your code here.
+
+	popl %esp           // Now %esp = utf_esp
+	                    // Note that (%esp + 4) is utf_eip, use ret back to it
+
+	// Return to re-execute the instruction that faulted.
+	// LAB 4: Your code here.
+
+	lea -4(%esp), %esp  // correct the value of %esp (we push utf_eip before)
+	ret                 // back to utf_eip
+```
+
+### Exercise 11
+
+```c
+	if (_pgfault_handler == 0) {
+		// First time through!
+		// LAB 4: Your code here.
+		/* panic("set_pgfault_handler not implemented"); */
+
+		int r = sys_page_alloc(0, (void *)(UXSTACKTOP - PGSIZE), PTE_W | PTE_U | PTE_P);
+		if (r < 0) {
+			panic("set_pgfault_handler: alloc user exception stack failed");
+		}
+		/* cprintf("set here\n"); */
+		sys_env_set_pgfault_upcall(0, _pgfault_upcall);
+	}
+```
+
+Test and we get:
+
+```shell
+dumbfork: OK (1.7s) 
+Part A score: 5/5
+
+faultread: OK (1.0s) 
+faultwrite: OK (1.5s) 
+faultdie: OK (1.5s) 
+    (Old jos.out.faultdie failure log removed)
+faultregs: OK (1.5s) 
+    (Old jos.out.faultregs failure log removed)
+faultalloc: OK (2.1s) 
+faultallocbad: OK (2.5s) 
+faultnostack: OK (1.5s) 
+faultbadhandler: OK (1.9s) 
+faultevilhandler: OK (1.6s) 
+```
+
+![](figure/user_trap.png)
