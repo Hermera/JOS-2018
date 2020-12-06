@@ -434,3 +434,201 @@ faultevilhandler: OK (1.6s)
 ```
 
 ![](figure/user_trap.png)
+
+### Exercise 12
+
+```c
+static void
+pgfault(struct UTrapframe *utf)
+{
+	void *addr = (void *) utf->utf_fault_va;
+	uint32_t err = utf->utf_err;
+	int r;
+
+	// Check that the faulting access was (1) a write, and (2) to a
+	// copy-on-write page.  If not, panic.
+	// Hint:
+	//   Use the read-only page table mappings at uvpt
+	//   (see <inc/memlayout.h>).
+
+	// LAB 4: Your code here.
+
+	bool check1 = (err & FEC_WR); // Caused by a write
+	bool check2 = (uvpt[PGNUM(addr)] & PTE_COW); // Copy on write
+	if (!check1 || !check2) {
+		panic("pgfault: not copy on write");
+	}
+
+	// Allocate a new page, map it at a temporary location (PFTEMP),
+	// copy the data from the old page to the new page, then move the new
+	// page to the old page's address.
+	// Hint:
+	//   You should make three system calls.
+
+	// LAB 4: Your code here.
+
+	// Similar to dumbfork
+	addr = ROUNDDOWN(addr, PGSIZE);
+	if ((r = sys_page_map(0, addr, 0, PFTEMP, PTE_U | PTE_P)) < 0) // temp = addr
+		panic("pgfault: sys_page_map failed");
+	if ((r = sys_page_alloc(0, addr, PTE_U | PTE_P | PTE_W)) < 0)  // addr = new()
+		panic("pgfault: sys_page_alloc failed");
+	memmove(addr, PFTEMP, PGSIZE); // addr = temp
+	if ((r = sys_page_unmap(0, PFTEMP)) < 0) // temp = 0
+		panic("pgfault: sys_page_unmap failed");
+	/* panic("pgfault not implemented"); */
+}
+```
+
+```c
+static int
+duppage(envid_t envid, unsigned pn)
+{
+	int r;
+
+	// LAB 4: Your code here.
+	void *addr = (void *) (pn * PGSIZE);
+	if (uvpt[pn] & PTE_SHARE) { // shared page
+		if ((r = sys_page_map(0, addr, envid, addr, PTE_SYSCALL)) < 0)
+			panic("sys_page_map: %e", r);
+	} else if ((uvpt[pn] & PTE_W) || (uvpt[pn] & PTE_COW)) {
+		if ((r = sys_page_map(0, addr, envid, addr, PTE_COW | PTE_U | PTE_P)) < 0)
+			panic("sys_page_map: %e", r);
+		if ((r = sys_page_map(0, addr, 0, addr, PTE_COW | PTE_U | PTE_P)) < 0)
+			panic("sys_page_map: %e", r);
+
+	} else { // read-only page
+		if ((r = sys_page_map(0, addr, envid, addr, PTE_U | PTE_P)) < 0)
+			panic("sys_page_map: %e", r);
+	}
+	return 0;
+}
+```
+
+```c
+envid_t
+fork(void)
+{
+	// LAB 4: Your code here.
+	/* panic("fork not implemented"); */
+
+	extern void _pgfault_upcall(void);
+	set_pgfault_handler(pgfault);
+
+	envid_t envid = sys_exofork();
+	if (envid == 0) {
+		// child env
+		// similar to dumbfork
+		thisenv = &envs[ENVX(sys_getenvid())];
+		return 0;
+	} else if (envid < 0) {
+		panic("sys_exofork: %e", envid);
+	}
+
+	for (uint32_t addr = 0; addr < USTACKTOP; addr += PGSIZE) {
+		if (!(uvpd[PDX(addr)] & PTE_P)) continue;
+		pte_t pte = uvpt[PGNUM(addr)];
+		if ((pte & PTE_P) && (pte & PTE_U)) {
+			duppage(envid, PGNUM(addr));
+		}
+	}
+
+	int r;
+	if ((r = sys_page_alloc(envid, (void *)(UXSTACKTOP-PGSIZE), PTE_P | PTE_W | PTE_U)) < 0)
+		panic("sys_page_alloc: %e", r);
+	// Need to allocate stack manually because the child env copy all the things from father
+	if ((r = sys_env_set_pgfault_upcall(envid, _pgfault_upcall)) < 0)
+		panic("sys_env_set_pgfault_upcall: %e", r);
+	if ((r = sys_env_set_status(envid, ENV_RUNNABLE)) < 0)
+		panic("sys_env_set_status: %e", r);
+	return envid;
+}
+```
+
+`make grade`:
+
+```shell
+faultread: OK (1.0s) 
+faultwrite: OK (1.5s) 
+faultdie: OK (1.2s) 
+faultregs: OK (1.5s) 
+faultalloc: OK (2.1s) 
+faultallocbad: OK (2.5s) 
+faultnostack: OK (1.5s) 
+faultbadhandler: OK (1.9s) 
+faultevilhandler: OK (2.4s) 
+forktree: OK (1.5s) 
+    (Old jos.out.forktree failure log removed)
+Part B score: 50/50
+```
+
+## Part C: Preemptive Multitasking and Inter-Process communication (IPC)
+
+### Exercise 13
+
+In `trapentry.S`:
+```asm
+	.data
+	.space 48
+
+	.text
+	NOEC(T_ExInt_32_handler, 32)
+	NOEC(T_ExInt_33_handler, 33)
+	NOEC(T_ExInt_34_handler, 34)
+	NOEC(T_ExInt_35_handler, 35)
+	NOEC(T_ExInt_36_handler, 36)
+	NOEC(T_ExInt_37_handler, 37)
+	NOEC(T_ExInt_38_handler, 38)
+	NOEC(T_ExInt_39_handler, 39)
+	NOEC(T_ExInt_40_handler, 40)
+	NOEC(T_ExInt_41_handler, 41)
+	NOEC(T_ExInt_42_handler, 42)
+	NOEC(T_ExInt_43_handler, 43)
+	NOEC(T_ExInt_44_handler, 44)
+	NOEC(T_ExInt_45_handler, 45)
+	NOEC(T_ExInt_46_handler, 46)
+	NOEC(T_ExInt_47_handler, 47)
+	NOEC(T_SYSCALL_handler, T_SYSCALL)
+```
+
+In `trap.c`:
+```c
+	for (int i = 32; i < 48; ++i) {
+		// external interrupts
+		SETGATE(idt[i], 0, GD_KT, funcs[i], 0);
+	}
+```
+
+In `env_alloc`:
+```c
+	// Enable interrupts while in user mode.
+	// LAB 4: Your code here.
+	e->env_tf.tf_eflags |= FL_IF;
+```
+
+And then uncomment the `sti` instruction in `sched_halt()` so that idle CPUs unmask interrupts. When we run `make run-spin`, the kernel will print trap frames.
+
+
+
+
+### Exercise 14
+
+```c
+	if (tf->tf_trapno == IRQ_OFFSET + IRQ_TIMER) {
+		lapic_eoi(); // should first call lapic_eoi() to ACKNOWLEDGE interupt
+		sched_yield();
+	}
+```
+
+Then run `make run-spin` and we get:
+
+```shell
+[00000000] new env 00001000
+I am the parent.  Forking the child...
+[00001000] new env 00001001
+I am the parent.  Running the child...
+I am the child.  Spinning...
+I am the parent.  Killing the child...
+[00001000] destroying 00001001
+```
+

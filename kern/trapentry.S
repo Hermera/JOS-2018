@@ -105,9 +105,25 @@ funcs:
 	NOEC(T_SIMDERR_handler, T_SIMDERR)
 
 	.data
-	.space 112
+	.space 48
 
 	.text
+	NOEC(T_ExInt_32_handler, 32)
+	NOEC(T_ExInt_33_handler, 33)
+	NOEC(T_ExInt_34_handler, 34)
+	NOEC(T_ExInt_35_handler, 35)
+	NOEC(T_ExInt_36_handler, 36)
+	NOEC(T_ExInt_37_handler, 37)
+	NOEC(T_ExInt_38_handler, 38)
+	NOEC(T_ExInt_39_handler, 39)
+	NOEC(T_ExInt_40_handler, 40)
+	NOEC(T_ExInt_41_handler, 41)
+	NOEC(T_ExInt_42_handler, 42)
+	NOEC(T_ExInt_43_handler, 43)
+	NOEC(T_ExInt_44_handler, 44)
+	NOEC(T_ExInt_45_handler, 45)
+	NOEC(T_ExInt_46_handler, 46)
+	NOEC(T_ExInt_47_handler, 47)
 	NOEC(T_SYSCALL_handler, T_SYSCALL)
 
 

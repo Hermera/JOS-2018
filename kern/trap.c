@@ -130,13 +130,20 @@ trap_init(void)
 
 	// challenge:
 	extern void (*funcs[])();
-	for (int i = 0; i <= 19; ++i)
+	for (int i = 0; i <= 19; ++i) {
+		// processor interrupts
 		if (i == T_BRKPT || i == T_DEBUG) {
 			SETGATE(idt[i], 0, GD_KT, funcs[i], 3);
 		} else if (i != 9 && i != 15) {
 			SETGATE(idt[i], 0, GD_KT, funcs[i], 0);
 		}
+	}
+	for (int i = 32; i < 48; ++i) {
+		// external interrupts
+		SETGATE(idt[i], 0, GD_KT, funcs[i], 0);
+	}
 
+	// system call
 	SETGATE(idt[T_SYSCALL], 0, GD_KT, funcs[T_SYSCALL], 3);
 	// Per-CPU setup
 	trap_init_percpu();
@@ -277,6 +284,11 @@ trap_dispatch(struct Trapframe *tf)
 	// Handle clock interrupts. Don't forget to acknowledge the
 	// interrupt using lapic_eoi() before calling the scheduler!
 	// LAB 4: Your code here.
+
+	if (tf->tf_trapno == IRQ_OFFSET + IRQ_TIMER) {
+		lapic_eoi(); // should first call lapic_eoi() to ACKNOWLEDGE interupt
+		sched_yield();
+	}
 
 	// Unexpected trap: The user process or the kernel has a bug.
 	print_trapframe(tf);
