@@ -326,7 +326,45 @@ static int
 sys_ipc_try_send(envid_t envid, uint32_t value, void *srcva, unsigned perm)
 {
 	// LAB 4: Your code here.
-	panic("sys_ipc_try_send not implemented");
+	/* panic("sys_ipc_try_send not implemented"); */
+
+	int r;
+	struct Env *e;
+
+	r = envid2env(envid, &e, 0);
+	if (r) return r;
+	if (!e->env_ipc_recving) {
+		return -E_IPC_NOT_RECV;
+	}
+
+
+	if (srcva < (void *)UTOP) {
+		pte_t *pte;
+		struct PageInfo *p = page_lookup(curenv->env_pgdir, srcva, &pte);
+
+		bool check1 = ((perm & (PTE_U | PTE_P)) == (PTE_U | PTE_P));
+		bool check2 = ((perm & (~PTE_SYSCALL)) == 0);
+		bool check3 = (srcva == ROUNDDOWN(srcva, PGSIZE));
+		if (!check1 || !check2 || !check3) return -E_INVAL;
+		if (!p) return -E_INVAL; // srcva is not mapped in the caller's	address space.
+		if ((perm & PTE_W) && !(*pte & PTE_W)) return -E_INVAL;
+
+		void *dstva = e->env_ipc_dstva;
+		if (dstva < (void *)UTOP) { // Otherwise no error occurs.
+			r = page_insert(e->env_pgdir, p, dstva, perm);
+			if (r) return r;
+			e->env_ipc_perm = perm;
+		}
+	}
+
+	e->env_ipc_recving = 0;
+	e->env_ipc_from = curenv->env_id;
+	e->env_ipc_value = value;
+	e->env_status = ENV_RUNNABLE;
+	e->env_tf.tf_regs.reg_eax = 0;
+	// Hint:  does the sys_ipc_recv function ever actually return?
+	// Answer: No. sys_ipc_recv will call sys_yield(). But when status = ENV_RUNNABLE, system will run the code of the env after call of sys_ipc_recv() at some time. So we need to set %eax.
+	return 0;
 }
 
 // Block until a value is ready.  Record that you want to receive
@@ -344,7 +382,16 @@ static int
 sys_ipc_recv(void *dstva)
 {
 	// LAB 4: Your code here.
-	panic("sys_ipc_recv not implemented");
+	/* panic("sys_ipc_recv not implemented"); */
+	if (dstva < (void *)UTOP && ROUNDDOWN(dstva, PGSIZE) != dstva) {
+		return -E_INVAL;
+	}
+
+	curenv->env_ipc_recving = true;
+	curenv->env_ipc_dstva = dstva;
+	curenv->env_status = ENV_NOT_RUNNABLE;
+	sys_yield();
+
 	return 0;
 }
 
@@ -395,7 +442,13 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 		ret = sys_page_unmap((envid_t)a1, (void *)a2);
 		break;
 	case SYS_env_set_pgfault_upcall:
-		ret = sys_env_set_pgfault_upcall((envid_t)a1, (void*)a2);
+		ret = sys_env_set_pgfault_upcall((envid_t)a1, (void *)a2);
+		break;
+	case SYS_ipc_try_send:
+		ret = sys_ipc_try_send((envid_t)a1, (uint32_t)a2, (void *)a3, (unsigned)a4);
+		break;
+	case SYS_ipc_recv:
+		ret = sys_ipc_recv((void *)a1);
 		break;
 	default:
 		ret = -E_INVAL;

@@ -8,6 +8,34 @@ Hongyu Wen, 1800013069
 >
 > Challenge 2 completed.
 
+## Grade
+
+```shell
+dumbfork: OK (1.4s) 
+Part A score: 5/5
+
+faultread: OK (1.1s) 
+faultwrite: OK (1.5s) 
+faultdie: OK (2.5s) 
+faultregs: OK (1.7s) 
+faultalloc: OK (2.4s) 
+faultallocbad: OK (1.4s) 
+faultnostack: OK (2.6s) 
+faultbadhandler: OK (1.4s) 
+faultevilhandler: OK (1.5s) 
+forktree: OK (1.7s) 
+Part B score: 50/50
+
+spin: OK (1.9s) 
+stresssched: OK (2.7s) 
+sendpage: OK (1.4s) 
+pingpong: OK (1.8s) 
+primes: OK (4.1s) 
+Part C score: 25/25
+
+Score: 80/80
+```
+
 
 ## Part A: Multiprocessor Support and Cooperative Multitasking
 
@@ -632,3 +660,150 @@ I am the parent.  Killing the child...
 [00001000] destroying 00001001
 ```
 
+### Exercise 15
+
+```c
+int32_t
+ipc_recv(envid_t *from_env_store, void *pg, int *perm_store)
+{
+	// LAB 4: Your code here.
+	/* panic("ipc_recv not implemented"); */
+
+	if (pg == NULL) {
+		// Not ask for a page
+		pg = (void *)UTOP;
+	}
+
+	int r = sys_ipc_recv(pg);
+	if (r < 0) {
+		if (from_env_store) *from_env_store = 0;
+		if (perm_store) *perm_store = 0;
+		return r;
+	}
+
+	if (from_env_store) *from_env_store = thisenv->env_ipc_from;
+	if (perm_store) *perm_store = thisenv->env_ipc_perm;
+	return thisenv->env_ipc_value;
+}
+```
+
+```c
+void
+ipc_send(envid_t to_env, uint32_t val, void *pg, int perm)
+{
+	// LAB 4: Your code here.
+	/* panic("ipc_send not implemented"); */
+
+	if (pg == NULL) {
+		pg = (void *)UTOP;
+	}
+
+	while (true) {
+		int r = sys_ipc_try_send(to_env, val, pg, (unsigned)perm);
+		if (r) {
+			if (r == -E_IPC_NOT_RECV) {
+				sys_yield();
+				// To be CPU-friendly
+				// It's ok if dont call sys_yield() because of timer interrupts
+				// primes: 6.1s -> primes: 4.1s
+				continue;
+			}
+			panic("ipc_try_send: %e", r);
+		} else {
+			break;
+		}
+	}
+}
+```
+
+```c
+static int
+sys_ipc_try_send(envid_t envid, uint32_t value, void *srcva, unsigned perm)
+{
+	// LAB 4: Your code here.
+	/* panic("sys_ipc_try_send not implemented"); */
+
+	int r;
+	struct Env *e;
+
+	r = envid2env(envid, &e, 0);
+	if (r) return r;
+	if (!e->env_ipc_recving) {
+		return -E_IPC_NOT_RECV;
+	}
+
+
+	if (srcva < (void *)UTOP) {
+		pte_t *pte;
+		struct PageInfo *p = page_lookup(curenv->env_pgdir, srcva, &pte);
+
+		bool check1 = ((perm & (PTE_U | PTE_P)) == (PTE_U | PTE_P));
+		bool check2 = ((perm & (~PTE_SYSCALL)) == 0);
+		bool check3 = (srcva == ROUNDDOWN(srcva, PGSIZE));
+		if (!check1 || !check2 || !check3) return -E_INVAL;
+		if (!p) return -E_INVAL; // srcva is not mapped in the caller's	address space.
+		if ((perm & PTE_W) && !(*pte & PTE_W)) return -E_INVAL;
+
+		void *dstva = e->env_ipc_dstva;
+		if (dstva < (void *)UTOP) { // Otherwise no error occurs.
+			r = page_insert(e->env_pgdir, p, dstva, perm);
+			if (r) return r;
+			e->env_ipc_perm = perm;
+		}
+	}
+
+	e->env_ipc_recving = 0;
+	e->env_ipc_from = curenv->env_id;
+	e->env_ipc_value = value;
+	e->env_status = ENV_RUNNABLE;
+	e->env_tf.tf_regs.reg_eax = 0;
+	// Hint:  does the sys_ipc_recv function ever actually return?
+	// Answer: No. sys_ipc_recv will call sys_yield(). But when status = ENV_RUNNABLE, system will run the code of the env after call of sys_ipc_recv() at some time. So we need to set %eax.
+	return 0;
+}
+```
+
+```c
+static int
+sys_ipc_recv(void *dstva)
+{
+	// LAB 4: Your code here.
+	/* panic("sys_ipc_recv not implemented"); */
+	if (dstva < (void *)UTOP && ROUNDDOWN(dstva, PGSIZE) != dstva) {
+		return -E_INVAL;
+	}
+
+	curenv->env_ipc_recving = true;
+	curenv->env_ipc_dstva = dstva;
+	curenv->env_status = ENV_NOT_RUNNABLE;
+	sys_yield();
+
+	return 0;
+}
+```
+
+```shell
+dumbfork: OK (1.4s) 
+Part A score: 5/5
+
+faultread: OK (1.1s) 
+faultwrite: OK (1.5s) 
+faultdie: OK (2.5s) 
+faultregs: OK (1.7s) 
+faultalloc: OK (2.4s) 
+faultallocbad: OK (1.4s) 
+faultnostack: OK (2.6s) 
+faultbadhandler: OK (1.4s) 
+faultevilhandler: OK (1.5s) 
+forktree: OK (1.7s) 
+Part B score: 50/50
+
+spin: OK (1.9s) 
+stresssched: OK (2.7s) 
+sendpage: OK (1.4s) 
+pingpong: OK (1.8s) 
+primes: OK (4.1s) 
+Part C score: 25/25
+
+Score: 80/80
+```
