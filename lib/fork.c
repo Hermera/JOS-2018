@@ -141,6 +141,43 @@ fork(void)
 }
 
 // Challenge!
+
+envid_t
+pfork(int pr)
+{
+	set_pgfault_handler(pgfault);
+
+	envid_t envid;
+	uint32_t addr;
+	envid = sys_exofork();
+	if (envid == 0) {
+		thisenv = &envs[ENVX(sys_getenvid())];
+		sys_change_priority(pr);
+		return 0;
+	}
+
+	if (envid < 0)
+		panic("sys_exofork: %e", envid);
+
+	for (addr = 0; addr < USTACKTOP; addr += PGSIZE)
+		if ((uvpd[PDX(addr)] & PTE_P) && (uvpt[PGNUM(addr)] & PTE_P)
+			&& (uvpt[PGNUM(addr)] & PTE_U)) {
+			duppage(envid, PGNUM(addr));
+		}
+
+	if (sys_page_alloc(envid, (void *)(UXSTACKTOP-PGSIZE), PTE_U|PTE_W|PTE_P) < 0)
+		panic("1");
+	extern void _pgfault_upcall();
+	sys_env_set_pgfault_upcall(envid, _pgfault_upcall);
+
+	if (sys_env_set_status(envid, ENV_RUNNABLE) < 0)
+		panic("sys_env_set_status");
+
+	return envid;
+}
+
+
+// Challenge!
 int
 sfork(void)
 {

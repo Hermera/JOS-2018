@@ -6,7 +6,7 @@ Hongyu Wen, 1800013069
 >
 > All questions answered.
 >
-> Challenge 2 completed.
+> 1 Challenge completed.
 
 ## Grade
 
@@ -191,6 +191,189 @@ Back in environment 00001001, iteration 4.
 Back in environment 00001000, iteration 3.
 All done in environment 00001001.
 ```
+
+### Challenge
+> Add a less trivial scheduling policy to the kernel, such as a fixed-priority scheduler that allows each environment to be assigned a priority and ensures that higher-priority environments are always chosen in preference to lower-priority environments. If you're feeling really adventurous, try implementing a Unix-style adjustable-priority scheduler or even a lottery or stride scheduler. (Look up "lottery scheduling" and "stride scheduling" in Google.)
+> Write a test program or two that verifies that your scheduling algorithm is working correctly (i.e., the right environments get run in the right order). It may be easier to write these test programs once you have implemented fork() and IPC in parts B and C of this lab.
+
+Add a new field `priority` in `struct Env`.
+
+In `sched.c`:
+
+```c
+	struct Env *newenv = NULL;
+	for (int i = 0; i < NENV; ++i) {
+		cur = (cur + 1) % NENV;
+		if (envs[cur].env_status == ENV_RUNNABLE) {
+			if (newenv == NULL || newenv->priority > envs[cur].priority) {
+				newenv = envs + cur;
+				// choose the env with high priority
+			}
+		}
+	}
+	if (curenv && curenv->env_status == ENV_RUNNING) {
+		if (newenv == NULL || newenv->priority > curenv->priority) {
+			newenv = curenv;
+		}
+	}
+	if (newenv) env_run(newenv);
+```
+
+In `kern/syscall.c`:
+```c
+int sys_change_priority(int pr) {
+	curenv->priority = pr;
+	return 0;
+}
+
+...
+
+	case SYS_change_priority:
+		ret = sys_change_priority((int)a1);
+		break;
+```
+
+
+
+In `inc/syscall.h`:
+```c
+enum {
+	SYS_cputs = 0,
+	SYS_cgetc,
+	SYS_getenvid,
+	SYS_env_destroy,
+	SYS_page_alloc,
+	SYS_page_map,
+	SYS_page_unmap,
+	SYS_exofork,
+	SYS_env_set_status,
+	SYS_env_set_pgfault_upcall,
+	SYS_yield,
+	SYS_ipc_try_send,
+	SYS_ipc_recv,
+	SYS_change_priority, // for challenge
+	NSYSCALLS
+};
+```
+
+In `lib/syscall.c`:
+```c
+int
+sys_change_priority(int pr) {
+	return syscall(SYS_change_priority, 1, pr, 0, 0, 0, 0);
+}
+```
+
+In `lib/fork.c`:
+
+```c
+envid_t
+pfork(int pr)
+{
+	set_pgfault_handler(pgfault);
+
+	envid_t envid;
+	uint32_t addr;
+	envid = sys_exofork();
+	if (envid == 0) {
+		thisenv = &envs[ENVX(sys_getenvid())];
+		sys_change_priority(pr);
+		return 0;
+	}
+
+	if (envid < 0)
+		panic("sys_exofork: %e", envid);
+
+	for (addr = 0; addr < USTACKTOP; addr += PGSIZE)
+		if ((uvpd[PDX(addr)] & PTE_P) && (uvpt[PGNUM(addr)] & PTE_P)
+			&& (uvpt[PGNUM(addr)] & PTE_U)) {
+			duppage(envid, PGNUM(addr));
+		}
+
+	if (sys_page_alloc(envid, (void *)(UXSTACKTOP-PGSIZE), PTE_U|PTE_W|PTE_P) < 0)
+		panic("1");
+	extern void _pgfault_upcall();
+	sys_env_set_pgfault_upcall(envid, _pgfault_upcall);
+
+	if (sys_env_set_status(envid, ENV_RUNNABLE) < 0)
+		panic("sys_env_set_status");
+
+	return envid;
+}
+```
+
+Modify `hello.c` to test it.
+```c
+#include <inc/lib.h>
+
+void
+umain(int argc, char **argv)
+{
+	int i;
+	for (i = 1; i <= 5; ++i) {
+		int pid = pfork(i);
+		if (pid == 0) {
+			cprintf("child %x is now living!\n", i);
+			int j;
+			for (j = 0; j < 5; ++j) {
+				cprintf("child %x is yielding!\n", i);
+				sys_yield();
+			}
+			break;
+		}
+	}
+}
+```
+
+We have:
+
+```shell
+child 1 is now living!
+child 1 is yielding!
+[00001000] new env 00001003
+[00001000] new env 00001004
+[00001000] new env 00001005
+child 2 is now living!
+child 2 is yielding!
+child 3 is now living!
+child 3 is yielding!
+child 4 is now living!
+child 4 is yielding!
+[00001000] exiting gracefully
+[00001000] free env 00001000
+child 5 is now living!
+child 5 is yielding!
+child 1 is yielding!
+child 1 is yielding!
+child 1 is yielding!
+child 1 is yielding!
+[00001001] exiting gracefully
+[00001001] free env 00001001
+child 2 is yielding!
+child 2 is yielding!
+child 2 is yielding!
+child 2 is yielding!
+[00001002] exiting gracefully
+[00001002] free env 00001002
+child 3 is yielding!
+child 3 is yielding!
+child 3 is yielding!
+child 3 is yielding!
+[00001003] exiting gracefully
+[00001003] free env 00001003
+child 4 is yielding!
+child 4 is yielding!
+child 4 is yielding!
+child 4 is yielding!
+[00001004] exiting gracefully
+[00001004] free env 00001004
+child 5 is yielding!
+child 5 is yielding!
+child 5 is yielding!
+child 5 is yielding!
+```
+
+
 
 ### Questions
 

@@ -395,6 +395,12 @@ sys_ipc_recv(void *dstva)
 	return 0;
 }
 
+
+int sys_change_priority(int pr) {
+	curenv->priority = pr;
+	return 0;
+}
+
 // Dispatches to the correct kernel function, passing the arguments.
 int32_t
 syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5)
@@ -449,6 +455,9 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 		break;
 	case SYS_ipc_recv:
 		ret = sys_ipc_recv((void *)a1);
+		break;
+	case SYS_change_priority:
+		ret = sys_change_priority((int)a1);
 		break;
 	default:
 		ret = -E_INVAL;
