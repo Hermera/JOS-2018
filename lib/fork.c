@@ -116,7 +116,7 @@ fork(void)
 		// child env
 		// similar to dumbfork
 		thisenv = &envs[ENVX(sys_getenvid())];
-		return 0;
+		return 0;	
 	} else if (envid < 0) {
 		panic("sys_exofork: %e", envid);
 	}
@@ -176,11 +176,49 @@ pfork(int pr)
 	return envid;
 }
 
-
 // Challenge!
 int
 sfork(void)
 {
-	panic("sfork not implemented");
-	return -E_INVAL;
+	/* panic("sfork not implemented"); */
+	/* return -E_INVAL; */
+
+	int r;
+	extern void _pgfault_upcall(void);
+	set_pgfault_handler(pgfault);
+
+	envid_t envid = sys_exofork();
+	if (envid == 0) {
+		// child envid
+		thisenv = &envs[ENVX(sys_getenvid())];
+		return 0;
+	} else if (envid < 0) {
+		panic("sys_exofork: %e", envid);
+	}
+
+	// parent envid
+	for (uint32_t addr = 0; addr < USTACKTOP; addr += PGSIZE) {
+		if (!(uvpd[PDX(addr)] & PTE_P)) continue;
+		pte_t pte = uvpt[PGNUM(addr)];
+		if ((pte & PTE_P) && (pte & PTE_U)) {
+			if (addr < USTACKTOP - PGSIZE) {
+				int perm = PTE_W | PTE_U | PTE_P;
+				if((r = sys_page_map(0, (void *)addr, envid, (void *)addr, perm)) < 0)
+					panic("sys_page_map:%e", r);
+				if((r = sys_page_map(0, (void *)addr, 0, (void *)addr, perm)) < 0)
+					panic("sys_page_map:%e", r);
+			} else {
+				duppage(envid, PGNUM(addr));
+			}
+		}
+	}
+	if ((r = sys_page_alloc(envid, (void *)(UXSTACKTOP-PGSIZE), PTE_P | PTE_W | PTE_U)) < 0)
+		panic("sys_page_alloc: %e", r);
+	// Need to allocate stack manually because the child env copy all the things from father
+	if ((r = sys_env_set_pgfault_upcall(envid, _pgfault_upcall)) < 0)
+		panic("sys_env_set_pgfault_upcall: %e", r);
+	if ((r = sys_env_set_status(envid, ENV_RUNNABLE)) < 0)
+		panic("sys_env_set_status: %e", r);
+	return envid;
+
 }

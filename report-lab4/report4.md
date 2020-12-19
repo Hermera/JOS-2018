@@ -6,7 +6,7 @@ Hongyu Wen, 1800013069
 >
 > All questions answered.
 >
-> 1 Challenge completed.
+> 2 Challenges completed.
 
 ## Grade
 
@@ -772,6 +772,108 @@ forktree: OK (1.5s)
     (Old jos.out.forktree failure log removed)
 Part B score: 50/50
 ```
+
+### Challenge
+>  Implement a shared-memory fork() called sfork(). This version should have the parent and child share all their memory pages (so writes in one environment appear in the other) except for pages in the stack area, which should be treated in the usual copy-on-write manner. Modify user/forktree.c to use sfork() instead of regular fork(). Also, once you have finished implementing IPC in part C, use your sfork() to run user/pingpongs. You will have to find a new way to provide the functionality of the global thisenv pointer.
+
+In `lib/fork.c`:
+
+```c
+int
+sfork(void)
+{
+	/* panic("sfork not implemented"); */
+	/* return -E_INVAL; */
+
+	int r;
+	extern void _pgfault_upcall(void);
+	set_pgfault_handler(pgfault);
+
+	envid_t envid = sys_exofork();
+	if (envid == 0) {
+		// child envid
+		thisenv = &envs[ENVX(sys_getenvid())];
+		return 0;
+	} else if (envid < 0) {
+		panic("sys_exofork: %e", envid);
+	}
+
+	// parent envid
+	for (uint32_t addr = 0; addr < USTACKTOP; addr += PGSIZE) {
+		if (!(uvpd[PDX(addr)] & PTE_P)) continue;
+		pte_t pte = uvpt[PGNUM(addr)];
+		if ((pte & PTE_P) && (pte & PTE_U)) {
+			if (addr < USTACKTOP - PGSIZE) {
+				int perm = PTE_W | PTE_U | PTE_P;
+				if((r = sys_page_map(0, (void *)addr, envid, (void *)addr, perm)) < 0)
+					panic("sys_page_map:%e", r);
+				if((r = sys_page_map(0, (void *)addr, 0, (void *)addr, perm)) < 0)
+					panic("sys_page_map:%e", r);
+			} else {
+				duppage(envid, PGNUM(addr));
+			}
+		}
+	}
+	if ((r = sys_page_alloc(envid, (void *)(UXSTACKTOP-PGSIZE), PTE_P | PTE_W | PTE_U)) < 0)
+		panic("sys_page_alloc: %e", r);
+	// Need to allocate stack manually because the child env copy all the things from father
+	if ((r = sys_env_set_pgfault_upcall(envid, _pgfault_upcall)) < 0)
+		panic("sys_env_set_pgfault_upcall: %e", r);
+	if ((r = sys_env_set_status(envid, ENV_RUNNABLE)) < 0)
+		panic("sys_env_set_status: %e", r);
+	return envid;
+
+}
+```
+
+Note that we modify `thisenv` in child env. But child env and parent env shared their memory, which means `thisenv` in parent env will point to child env, too.
+To deal with this problem, we need to update `thisenv` whenever it is used. In fact, we only need to modify `ipc_recv` in `lib/ipc.c`.
+
+```c
+int32_t
+ipc_recv(envid_t *from_env_store, void *pg, int *perm_store)
+{
+	// LAB 4: Your code here.
+	/* panic("ipc_recv not implemented"); */
+
+	if (pg == NULL) {
+		// Not ask for a page
+		pg = (void *)UTOP;
+	}
+
+	int r = sys_ipc_recv(pg);
+	if (r < 0) {
+		if (from_env_store) *from_env_store = 0;
+		if (perm_store) *perm_store = 0;
+		return r;
+	}
+
+	thisenv = &envs[ENVX(sys_getenvid())]; // for sfork()
+
+	if (from_env_store) *from_env_store = thisenv->env_ipc_from;
+	if (perm_store) *perm_store = thisenv->env_ipc_perm;
+	return thisenv->env_ipc_value;
+}
+```
+
+Run `make run-pingpongs`.(We have finished all lab4 now.)
+```shell
+i am 00001000; thisenv is 0xeec00000
+send 0 from 1000 to 1001
+1001 got 0 from 1000 (thisenv is 0xeec00080 1001)
+1000 got 1 from 1001 (thisenv is 0xeec00000 1000)
+1001 got 2 from 1000 (thisenv is 0xeec00080 1001)
+1000 got 3 from 1001 (thisenv is 0xeec00000 1000)
+1001 got 4 from 1000 (thisenv is 0xeec00080 1001)
+1000 got 5 from 1001 (thisenv is 0xeec00000 1000)
+1001 got 6 from 1000 (thisenv is 0xeec00080 1001)
+1000 got 7 from 1001 (thisenv is 0xeec00000 1000)
+1001 got 8 from 1000 (thisenv is 0xeec00080 1001)
+1000 got 9 from 1001 (thisenv is 0xeec00000 1000)
+[00001000] exiting gracefully
+```
+It runs correctly.
+
 
 ## Part C: Preemptive Multitasking and Inter-Process communication (IPC)
 
