@@ -26,6 +26,12 @@ pgfault(struct UTrapframe *utf)
 
 	// LAB 4: Your code here.
 
+	bool check1 = (err & FEC_WR); // Caused by a write
+	bool check2 = (uvpt[PGNUM(addr)] & PTE_COW); // Copy on write
+	if (!check1 || !check2) {
+		panic("pgfault: not copy on write");
+	}
+
 	// Allocate a new page, map it at a temporary location (PFTEMP),
 	// copy the data from the old page to the new page, then move the new
 	// page to the old page's address.
@@ -34,7 +40,16 @@ pgfault(struct UTrapframe *utf)
 
 	// LAB 4: Your code here.
 
-	panic("pgfault not implemented");
+	// Similar to dumbfork
+	addr = ROUNDDOWN(addr, PGSIZE);
+	if ((r = sys_page_map(0, addr, 0, PFTEMP, PTE_U | PTE_P)) < 0) // temp = addr
+		panic("pgfault: sys_page_map failed");
+	if ((r = sys_page_alloc(0, addr, PTE_U | PTE_P | PTE_W)) < 0)  // addr = new()
+		panic("pgfault: sys_page_alloc failed");
+	memmove(addr, PFTEMP, PGSIZE); // addr = temp
+	if ((r = sys_page_unmap(0, PFTEMP)) < 0) // temp = 0
+		panic("pgfault: sys_page_unmap failed");
+	/* panic("pgfault not implemented"); */
 }
 
 //
@@ -54,7 +69,20 @@ duppage(envid_t envid, unsigned pn)
 	int r;
 
 	// LAB 4: Your code here.
-	panic("duppage not implemented");
+	void *addr = (void *) (pn * PGSIZE);
+	if (uvpt[pn] & PTE_SHARE) { // shared page
+		if ((r = sys_page_map(0, addr, envid, addr, PTE_SYSCALL)) < 0)
+			panic("sys_page_map: %e", r);
+	} else if ((uvpt[pn] & PTE_W) || (uvpt[pn] & PTE_COW)) {
+		if ((r = sys_page_map(0, addr, envid, addr, PTE_COW | PTE_U | PTE_P)) < 0)
+			panic("sys_page_map: %e", r);
+		if ((r = sys_page_map(0, addr, 0, addr, PTE_COW | PTE_U | PTE_P)) < 0)
+			panic("sys_page_map: %e", r);
+
+	} else { // read-only page
+		if ((r = sys_page_map(0, addr, envid, addr, PTE_U | PTE_P)) < 0)
+			panic("sys_page_map: %e", r);
+	}
 	return 0;
 }
 
@@ -78,13 +106,119 @@ envid_t
 fork(void)
 {
 	// LAB 4: Your code here.
-	panic("fork not implemented");
+	/* panic("fork not implemented"); */
+
+	extern void _pgfault_upcall(void);
+	set_pgfault_handler(pgfault);
+
+	envid_t envid = sys_exofork();
+	if (envid == 0) {
+		// child env
+		// similar to dumbfork
+		thisenv = &envs[ENVX(sys_getenvid())];
+		return 0;	
+	} else if (envid < 0) {
+		panic("sys_exofork: %e", envid);
+	}
+
+	for (uint32_t addr = 0; addr < USTACKTOP; addr += PGSIZE) {
+		if (!(uvpd[PDX(addr)] & PTE_P)) continue;
+		pte_t pte = uvpt[PGNUM(addr)];
+		if ((pte & PTE_P) && (pte & PTE_U)) {
+			duppage(envid, PGNUM(addr));
+		}
+	}
+
+	int r;
+	if ((r = sys_page_alloc(envid, (void *)(UXSTACKTOP-PGSIZE), PTE_P | PTE_W | PTE_U)) < 0)
+		panic("sys_page_alloc: %e", r);
+	// Need to allocate stack manually because the child env copy all the things from father
+	if ((r = sys_env_set_pgfault_upcall(envid, _pgfault_upcall)) < 0)
+		panic("sys_env_set_pgfault_upcall: %e", r);
+	if ((r = sys_env_set_status(envid, ENV_RUNNABLE)) < 0)
+		panic("sys_env_set_status: %e", r);
+	return envid;
+}
+
+// Challenge!
+
+envid_t
+pfork(int pr)
+{
+	set_pgfault_handler(pgfault);
+
+	envid_t envid;
+	uint32_t addr;
+	envid = sys_exofork();
+	if (envid == 0) {
+		thisenv = &envs[ENVX(sys_getenvid())];
+		sys_change_priority(pr);
+		return 0;
+	}
+
+	if (envid < 0)
+		panic("sys_exofork: %e", envid);
+
+	for (addr = 0; addr < USTACKTOP; addr += PGSIZE)
+		if ((uvpd[PDX(addr)] & PTE_P) && (uvpt[PGNUM(addr)] & PTE_P)
+			&& (uvpt[PGNUM(addr)] & PTE_U)) {
+			duppage(envid, PGNUM(addr));
+		}
+
+	if (sys_page_alloc(envid, (void *)(UXSTACKTOP-PGSIZE), PTE_U|PTE_W|PTE_P) < 0)
+		panic("1");
+	extern void _pgfault_upcall();
+	sys_env_set_pgfault_upcall(envid, _pgfault_upcall);
+
+	if (sys_env_set_status(envid, ENV_RUNNABLE) < 0)
+		panic("sys_env_set_status");
+
+	return envid;
 }
 
 // Challenge!
 int
 sfork(void)
 {
-	panic("sfork not implemented");
-	return -E_INVAL;
+	/* panic("sfork not implemented"); */
+	/* return -E_INVAL; */
+
+	int r;
+	extern void _pgfault_upcall(void);
+	set_pgfault_handler(pgfault);
+
+	envid_t envid = sys_exofork();
+	if (envid == 0) {
+		// child envid
+		thisenv = &envs[ENVX(sys_getenvid())];
+		return 0;
+	} else if (envid < 0) {
+		panic("sys_exofork: %e", envid);
+	}
+
+	// parent envid
+	for (uint32_t addr = 0; addr < USTACKTOP; addr += PGSIZE) {
+		if (!(uvpd[PDX(addr)] & PTE_P)) continue;
+		pte_t pte = uvpt[PGNUM(addr)];
+		if ((pte & PTE_P) && (pte & PTE_U)) {
+			if (addr < USTACKTOP - PGSIZE) {
+				int perm = PTE_W | PTE_U | PTE_P;
+				if((r = sys_page_map(0, (void *)addr, envid, (void *)addr, perm)) < 0)
+					panic("sys_page_map:%e", r);
+				if((r = sys_page_map(0, (void *)addr, 0, (void *)addr, perm)) < 0)
+					panic("sys_page_map:%e", r);
+			} else {
+				duppage(envid, PGNUM(addr));
+			}
+		}
+	}
+	if ((r = sys_page_alloc(envid, (void *)(UXSTACKTOP-PGSIZE), PTE_P | PTE_W | PTE_U)) < 0)
+		panic("sys_page_alloc: %e", r);
+	// Need to allocate stack manually because the child env copy all the things from father
+	if ((r = sys_env_set_pgfault_upcall(envid, _pgfault_upcall)) < 0)
+		panic("sys_env_set_pgfault_upcall: %e", r);
+	if ((r = sys_env_set_status(envid, ENV_RUNNABLE)) < 0)
+		panic("sys_env_set_status: %e", r);
+	return envid;
+
 }

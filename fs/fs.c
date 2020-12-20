@@ -62,7 +62,18 @@ alloc_block(void)
 	// super->s_nblocks blocks in the disk altogether.
 
 	// LAB 5: Your code here.
-	panic("alloc_block not implemented");
+	/* panic("alloc_block not implemented"); */
+
+	int offset = 2; // 1 for super and 2 for bitmap
+	for (uint32_t i = 0; i < super->s_nblocks; ++i) {
+		if (block_is_free(i)) {
+			bitmap[i/32] &= ~(1 << (i%32));
+
+			// flush the bitmap
+			flush_block(diskaddr(offset + i / 32 / NINDIRECT));
+			return i;
+		}
+	}
 	return -E_NO_DISK;
 }
 

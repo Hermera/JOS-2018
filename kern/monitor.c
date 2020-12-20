@@ -6,11 +6,13 @@
 #include <inc/memlayout.h>
 #include <inc/assert.h>
 #include <inc/x86.h>
+#include <inc/color.h>
 
 #include <kern/console.h>
 #include <kern/monitor.h>
 #include <kern/kdebug.h>
 #include <kern/trap.h>
+#include <kern/pmap.h>
 
 #define CMDBUF_SIZE	80	// enough for one VGA text line
 
@@ -25,6 +27,11 @@ struct Command {
 static struct Command commands[] = {
 	{ "help", "Display this list of commands", mon_help },
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
+	{ "showmappings", "Display in a useful and easy-to-read format all of the physical page mappings", showmappings },
+	{ "set_perm", "Set new perm for a certain page", set_perm },
+	{ "dump", "Dump the contents of a range of memory given either a virtual or physical address range.", dump },
+	{ "continue", "continue execution from the current location ", mon_continue },
+	{ "stepi", "single-step one instruction", mon_stepi }
 };
 
 /***** Implementations of basic kernel monitor commands *****/
@@ -39,7 +46,7 @@ mon_help(int argc, char **argv, struct Trapframe *tf)
 	return 0;
 }
 
-int
+int 
 mon_kerninfo(int argc, char **argv, struct Trapframe *tf)
 {
 	extern char _start[], entry[], etext[], edata[], end[];
@@ -59,6 +66,155 @@ int
 mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 {
 	// Your code here.
+	cprintf("Stack backtrace:\n");
+#define READ(x) *((uint32_t*) (x))
+
+	uint32_t ebp = read_ebp();
+	uint32_t eip = 0;
+	struct Eipdebuginfo info;
+	while (ebp) {
+		eip = READ(ebp + 4);
+		cprintf("ebp %08x  eip %08x  args %08x %08x %08x %08x %08x\n",
+			ebp,
+			eip,
+			READ(ebp + 8),
+			READ(ebp + 12),
+			READ(ebp + 16),
+			READ(ebp + 20),
+			READ(ebp + 24));
+
+		if(!debuginfo_eip(eip, &info)) {
+			cprintf("\t%s:%d: %.*s+%d\n",
+				info.eip_file,
+				info.eip_line,
+				info.eip_fn_namelen, info.eip_fn_name,
+				eip - info.eip_fn_addr);
+		}
+		ebp = READ(ebp);
+	}
+	return 0;
+#undef READ
+}
+
+int mon_continue(int argc, char **argv, struct Trapframe *tf) {
+	// Continue execution.
+
+	if (tf == NULL) {
+		cprintf("No current env!\n");
+		return 0;
+	}
+
+	// set trap bit = 0
+	// disable single-step mode
+	tf->tf_eflags &= ~(FL_TF);
+	return -1;
+}
+
+
+int mon_stepi(int argc, char **argv, struct Trapframe *tf) {
+	// single-step execution
+
+	if (tf == NULL) {
+		cprintf("No current env!\n");
+		return 0;
+	}
+
+	// set trap bit = 1
+	tf->tf_eflags |= FL_TF;
+	return -1;
+}
+
+
+int xtoi(char *buf) {
+	uint32_t ret = 0;
+	for (buf += 2; *buf; ++buf) {
+		if (*buf >= 'a') {
+			ret = ret * 16 + (*buf - 'a') + 10;
+		} else {
+			ret = ret * 16 + (*buf - '0');
+		}
+	}
+	return ret;
+}
+
+int btoi(char *buf) {
+	uint32_t ret = 0;
+	for (; *buf; ++buf) {
+		ret = ret * 2 + (*buf - '0');
+	}
+	return ret;
+}
+
+void pprint(pte_t *pte) {
+	cprintf("Present=%d", (bool)(*pte & PTE_P));
+	cprintf("Write=%d ", (bool)(*pte & PTE_W));
+	cprintf("User=%d\n", (bool)(*pte & PTE_U));
+}
+
+int showmappings(int argc, char **argv, struct Trapframe *tf) {
+	if (argc <= 1) {
+		cprintf("showmappings usage: showmappings begin_addr end_addr\n");
+		return 0;
+	}
+
+	uint32_t begin_addr = xtoi(argv[1]);
+	uint32_t end_addr = xtoi(argv[2]);
+	for (uint32_t now = begin_addr; now <= end_addr; now += PGSIZE) {
+		pte_t *pte = pgdir_walk(kern_pgdir, (void *)now, 1);
+		if (pte == NULL) {
+			panic("Out of memory!");
+		} else if (*pte & PTE_P) {
+			cprintf("page %x: ");
+			pprint(pte);
+		} else {
+			cprintf("page %x does not exist.\n");
+		}
+	}
+	return 0;
+}
+
+int set_perm(int argc, char **argv, struct Trapframe *tf) {
+	if (argc <= 1) {
+		cprintf("set_perm usage: set_perm addr new_perm\n");
+		return 0;
+	}
+
+	uint32_t addr = xtoi(argv[1]);
+	uint32_t perm = btoi(argv[2]);
+	uint32_t mask = PTE_P | PTE_U | PTE_W;
+
+	pte_t *pte = pgdir_walk(kern_pgdir, (void *)addr, 1);
+
+	if (pte == NULL) {
+		panic("Out of memory!");
+	} else {
+		cprintf("Before change: ");
+		pprint(pte);
+		*pte &= ~mask;
+		*pte |= perm;
+		cprintf("After change: ");
+		pprint(pte);
+	}
+	return 0;
+}
+
+int dump(int argc, char **argv, struct Trapframe *tf) {
+	if (argc <= 3) {
+		cprintf("dump usage: dump [V/P] begin_addr num_of_addr\n");
+		return 0;
+	}
+
+	uint32_t begin_addr = xtoi(argv[2]);
+	uint32_t end_addr = xtoi(argv[3]);
+	if (*argv[1] == 'P') {
+		begin_addr += KERNBASE;
+		end_addr += KERNBASE;
+	}
+
+	for (; begin_addr <= end_addr; begin_addr += 1) {
+		uint8_t * addr = (uint8_t *) begin_addr;
+		cprintf("%x: %x\n", addr, *addr);
+	}
 	return 0;
 }
 
@@ -115,6 +271,9 @@ monitor(struct Trapframe *tf)
 
 	cprintf("Welcome to the JOS kernel monitor!\n");
 	cprintf("Type 'help' for a list of commands.\n");
+	cprintf("Printf something in %Cred.\n", COLOR_RED);
+	cprintf("Printf something in %Cgreen.\n", COLOR_GREEN);
+	cprintf("Printf something in %Cblue.\n", COLOR_BLUE);
 
 	if (tf != NULL)
 		print_trapframe(tf);

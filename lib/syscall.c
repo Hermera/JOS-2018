@@ -117,3 +117,7 @@ sys_ipc_recv(void *dstva)
 	return syscall(SYS_ipc_recv, 1, (uint32_t)dstva, 0, 0, 0, 0);
 }
 
+int
+sys_change_priority(int pr) {
+	return syscall(SYS_change_priority, 1, pr, 0, 0, 0, 0);
+}
