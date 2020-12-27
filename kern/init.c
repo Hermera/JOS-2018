@@ -58,7 +58,7 @@ i386_init(void)
 #else
 	// Touch all you want.
 
-	ENV_CREATE(user_icode, ENV_TYPE_USER);
+	ENV_CREATE(user_spawnhello, ENV_TYPE_USER);
 
 #endif // TEST*
 

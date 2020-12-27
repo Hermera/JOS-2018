@@ -242,6 +242,7 @@ init_stack(envid_t child, const char **argv, uintptr_t *init_esp)
 	assert(string_store == (char*)UTEMP + PGSIZE);
 
 	argv_store[-1] = UTEMP2USTACK(argv_store);
+
 	argv_store[-2] = argc;
 
 	*init_esp = UTEMP2USTACK(&argv_store[-2]);
@@ -302,6 +303,16 @@ static int
 copy_shared_pages(envid_t child)
 {
 	// LAB 5: Your code here.
+
+	int r;
+	uintptr_t addr;
+	for (addr = 0; addr < UTOP; addr += PGSIZE) {
+		if ((uvpd[PDX(addr)] & PTE_P) && (uvpt[PGNUM(addr)] & PTE_P) &&
+		    (uvpt[PGNUM(addr)] & PTE_U) && (uvpt[PGNUM(addr)] & PTE_SHARE)) {
+			r = sys_page_map(0, (void*)addr, child, (void*)addr, (uvpt[PGNUM(addr)] & PTE_SYSCALL));
+			if (r) return r;
+		}
+	}
 	return 0;
 }
 

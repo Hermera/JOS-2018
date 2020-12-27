@@ -167,3 +167,44 @@ bc_init(void)
 	memmove(&super, diskaddr(1), sizeof super);
 }
 
+// lab 5's challenge : implement eviction policy for block cache.
+void
+evict_block(void *addr)
+{
+	int r;
+	uint32_t blockno = ((uint32_t)addr - DISKMAP) / BLKSIZE;
+
+	if(addr < (void *)DISKMAP || addr >= (void *)(DISKMAP + DISKSIZE)){
+		panic("evict_block_force of bad va %08x", addr);
+	}
+	// ignore boot sector,super block and bitmap block.
+	// if the block isn't in the block cache,just not do anything.
+	if(blockno <= 2 || !va_is_mapped(addr))
+		return;
+
+	// flush this block if PTE_D flag was set before you evict this block to disk from memory.
+	if(uvpt[PGNUM(addr)] & PTE_D) {
+		flush_block(addr);
+	}
+
+	// enture that addr was page-aligned,otherwise sys_page_unmap will return error -E_INVAL.
+	addr = (void *)ROUNDDOWN(addr, PGSIZE);
+	// evict this block to disk.
+	if((r = sys_page_unmap(0, addr)) < 0){
+		panic("evict_block_force:sys_page_unmap:%e", r);
+	}
+}
+
+// This function will only evict those block
+// loaded into memory but has never been accessed.
+void
+block_evict_policy()
+{
+	uint32_t blockno, nblocks = DISKSIZE / BLKSIZE;
+	for(blockno = 3; blockno < nblocks; ++blockno) {
+		if (!(uvpt[PGNUM(diskaddr(blockno))] & PTE_A)){
+			evict_block(diskaddr(blockno));
+			cprintf("block with blockno %d was evicted.\n");
+		}
+	}
+}
