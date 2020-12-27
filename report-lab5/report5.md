@@ -6,7 +6,7 @@ Hongyu Wen, 1800013069
 >
 > All questions answered.
 >
-> 2 Challenges completed.
+> 1 Challenges completed.
 
 ## Grade
 
@@ -118,6 +118,55 @@ Run `make grade` we get:
   check_super: OK 
   check_bitmap: OK 
 ```
+
+### Challenge
+> The block cache has no eviction policy. Once a block gets faulted in to it, it never gets removed and will remain in memory forevermore. Add eviction to the buffer cache. Using the PTE_A "accessed" bits in the page tables, which the hardware sets on any access to a page, you can track approximate usage of disk blocks without the need to modify every place in the code that accesses the disk map region. Be careful with dirty blocks.
+
+Simply remove the blocks without `PTE_A`.
+```c
+void
+evict_block(void *addr)
+{
+	int r;
+	uint32_t blockno = ((uint32_t)addr - DISKMAP) / BLKSIZE;
+
+	if(addr < (void *)DISKMAP || addr >= (void *)(DISKMAP + DISKSIZE)){
+		panic("evict_block_force of bad va %08x", addr);
+	}
+	
+	// ignore boot sector, super block and bitmap block.
+	if(blockno <= 2 || !va_is_mapped(addr))
+		return;
+
+        // deal with dirty block
+	if(uvpt[PGNUM(addr)] & PTE_D) {
+		flush_block(addr);
+	}
+
+	// enture that addr was page-aligned
+	addr = (void *)ROUNDDOWN(addr, PGSIZE);
+
+        // evict this block to disk.
+	if((r = sys_page_unmap(0, addr)) < 0){
+		panic("evict_block_force:sys_page_unmap:%e", r);
+	}
+}
+
+// This function will only evict those block
+// loaded into memory but has never been accessed.
+void
+block_evict_policy()
+{
+	uint32_t blockno, nblocks = DISKSIZE / BLKSIZE;
+	for(blockno = 3; blockno < nblocks; ++blockno) {
+		if (!(uvpt[PGNUM(diskaddr(blockno))] & PTE_A)){
+			evict_block(diskaddr(blockno));
+			cprintf("block with blockno %d was evicted.\n");
+		}
+	}
+}
+```
+
 
 ## The Block Bitmap
 

@@ -177,18 +177,18 @@ evict_block(void *addr)
 	if(addr < (void *)DISKMAP || addr >= (void *)(DISKMAP + DISKSIZE)){
 		panic("evict_block_force of bad va %08x", addr);
 	}
-	// ignore boot sector,super block and bitmap block.
-	// if the block isn't in the block cache,just not do anything.
+	// ignore boot sector, super block and bitmap block.
 	if(blockno <= 2 || !va_is_mapped(addr))
 		return;
 
-	// flush this block if PTE_D flag was set before you evict this block to disk from memory.
+	// deal with dirty block
 	if(uvpt[PGNUM(addr)] & PTE_D) {
 		flush_block(addr);
 	}
 
-	// enture that addr was page-aligned,otherwise sys_page_unmap will return error -E_INVAL.
+	// enture that addr was page-aligned
 	addr = (void *)ROUNDDOWN(addr, PGSIZE);
+
 	// evict this block to disk.
 	if((r = sys_page_unmap(0, addr)) < 0){
 		panic("evict_block_force:sys_page_unmap:%e", r);
