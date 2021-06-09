@@ -348,8 +348,9 @@ Score: 70/70
 
 5. - `PageInfo`: 4MB
    - `page directory`: 4KB
-   - `page table`: $2^{10}$ * 4KB = 4MB (there can be multiple virtual addr corresponding to one physical addr)
-   - total: 8MB + 4KB
+   - `page table`: Wrong:! $2^{10}$ * 4KB = 4MB (there can be multiple virtual addr corresponding to one physical addr)
+   Correct: Only 2G Memory, 512K pages, 512 page tables, 512 * 4KB = 2MB
+   - total: 8MB + 4KB ; Correct: 6MB + 4KB
 6. 
    After `jmp *%eax`. 
    It is possible because `entry_pgdir` also maps virtual addr [0, 4M) to physical addr [0, 4M).

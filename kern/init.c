@@ -120,6 +120,10 @@ mp_main(void)
 	//
 	// Your code here:
 
+	if (cpunum() == 3) {
+		panic("panic cpu 4\n");
+	}
+
 	lock_kernel();
 	sched_yield();
 

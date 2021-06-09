@@ -132,7 +132,7 @@ trap_init(void)
 	extern void (*funcs[])();
 	for (int i = 0; i <= 19; ++i) {
 		// processor interrupts
-		if (i == T_BRKPT || i == T_DEBUG) {
+		if (i == T_BRKPT || i == T_DEBUG || i == T_PGFLT) {
 			SETGATE(idt[i], 0, GD_KT, funcs[i], 3);
 		} else if (i != 9 && i != 15) {
 			SETGATE(idt[i], 0, GD_KT, funcs[i], 0);

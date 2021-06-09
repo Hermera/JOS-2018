@@ -257,6 +257,10 @@ mem_init(void)
 
 	// Some more checks, only possible after kern_pgdir is installed.
 	check_page_installed_pgdir();
+
+	/* void *va = (void *)0x12345678; */
+	/* /\* pgdir_walk(kern_pgdir, va, 0); *\/ */
+	/* cprintf("******%s******\n", (char*)0x12345678); */
 }
 
 // Modify mappings in kern_pgdir to support SMP
@@ -448,7 +452,6 @@ pgdir_walk(pde_t *pgdir, const void *va, int create)
 
 	unsigned int dic_idx = PDX(va), table_idx; // page directory index
 	pde_t *dic_entry_ptr = pgdir + dic_idx, *table_base = NULL;
-
 	if (!(*dic_entry_ptr & PTE_P))  {// Not present
 		if (create) {
 			newpage = page_alloc(1);
